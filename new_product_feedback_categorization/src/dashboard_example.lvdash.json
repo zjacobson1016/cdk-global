@@ -1,0 +1,584 @@
+{
+    "datasets": [
+      {
+        "name": "dataset1",
+        "displayName": "maintenance_metrics_view",
+        "asset_name": "manufacturing.maintenance_tech.maintenance_metrics_view"
+      }
+    ],
+    "pages": [
+      {
+        "name": "overview",
+        "displayName": "Maintenance Overview",
+        "layout": [
+          {
+            "widget": {
+              "name": "total_work_orders_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "monthly(created_date)",
+                        "expression": "DATE_TRUNC(\"MONTH\", `created_date`)"
+                      },
+                      {
+                        "name": "measure(total_work_orders_measure)",
+                        "expression": "MEASURE(`total_work_orders_measure`)"
+                      }
+                    ],
+                    "disaggregated": false,
+                    "orders": [
+                      {
+                        "direction": "DESC",
+                        "expression": "DATE_TRUNC(\"MONTH\", `created_date`)"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(total_work_orders_measure)"
+                  },
+                  "period": {
+                    "fieldName": "monthly(created_date)"
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Total Work Orders"
+                }
+              }
+            },
+            "position": {
+              "x": 0,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "open_work_orders_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "monthly(created_date)",
+                        "expression": "DATE_TRUNC(\"MONTH\", `created_date`)"
+                      },
+                      {
+                        "name": "measure(open_work_orders_measure)",
+                        "expression": "MEASURE(`open_work_orders_measure`)"
+                      }
+                    ],
+                    "disaggregated": false,
+                    "orders": [
+                      {
+                        "direction": "DESC",
+                        "expression": "DATE_TRUNC(\"MONTH\", `created_date`)"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(open_work_orders_measure)"
+                  },
+                  "period": {
+                    "fieldName": "monthly(created_date)"
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Open Work Orders"
+                }
+              }
+            },
+            "position": {
+              "x": 1,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "overdue_work_orders_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "measure(overdue_work_orders_measure)",
+                        "expression": "MEASURE(`overdue_work_orders_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(overdue_work_orders_measure)",
+                    "style": {
+                      "rules": [
+                        {
+                          "condition": {
+                            "operand": {
+                              "type": "data-value",
+                              "value": "0"
+                            },
+                            "operator": ">"
+                          },
+                          "color": "#FF0000"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Overdue Work Orders"
+                }
+              }
+            },
+            "position": {
+              "x": 2,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "total_cost_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "measure(total_cost_measure)",
+                        "expression": "MEASURE(`total_cost_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(total_cost_measure)",
+                    "format": {
+                      "type": "number-currency",
+                      "currencyCode": "USD",
+                      "abbreviation": "compact",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 2
+                      }
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Total Maintenance Cost"
+                }
+              }
+            },
+            "position": {
+              "x": 3,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "completion_rate_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "measure(completion_rate_measure)",
+                        "expression": "MEASURE(`completion_rate_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(completion_rate_measure)",
+                    "format": {
+                      "type": "number-percent",
+                      "decimalPlaces": {
+                        "type": "max",
+                        "places": 1
+                      }
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Completion Rate"
+                }
+              }
+            },
+            "position": {
+              "x": 4,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "downtime_counter",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "measure(total_downtime_minutes_measure)",
+                        "expression": "MEASURE(`total_downtime_minutes_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 2,
+                "widgetType": "counter",
+                "encodings": {
+                  "value": {
+                    "fieldName": "measure(total_downtime_minutes_measure)"
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Total Downtime (minutes)"
+                }
+              }
+            },
+            "position": {
+              "x": 5,
+              "y": 1,
+              "width": 1,
+              "height": 2
+            }
+          },
+          {
+            "widget": {
+              "name": "work_orders_by_status",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "status",
+                        "expression": "`status`"
+                      },
+                      {
+                        "name": "work_order_id",
+                        "expression": "`work_order_id`"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 3,
+                "widgetType": "pie",
+                "encodings": {
+                  "color": {
+                    "fieldName": "status",
+                    "scale": {
+                      "type": "categorical"
+                    }
+                  },
+                  "label": {
+                    "show": false
+                  },
+                  "extra": [
+                    {
+                      "fieldName": "work_order_id"
+                    }
+                  ]
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Work Orders by Status"
+                }
+              }
+            },
+            "position": {
+              "x": 0,
+              "y": 3,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "widget": {
+              "name": "work_orders_by_priority",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "priority",
+                        "expression": "`priority`"
+                      },
+                      {
+                        "name": "measure(total_work_orders_measure)",
+                        "expression": "MEASURE(`total_work_orders_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 3,
+                "widgetType": "bar",
+                "encodings": {
+                  "x": {
+                    "fieldName": "priority",
+                    "scale": {
+                      "type": "categorical"
+                    }
+                  },
+                  "y": {
+                    "fieldName": "measure(total_work_orders_measure)",
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Work Orders by Priority"
+                }
+              }
+            },
+            "position": {
+              "x": 3,
+              "y": 3,
+              "width": 3,
+              "height": 4
+            }
+          },
+          {
+            "widget": {
+              "name": "daily_work_orders",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "created_date",
+                        "expression": "`created_date`"
+                      },
+                      {
+                        "name": "measure(total_work_orders_measure)",
+                        "expression": "MEASURE(`total_work_orders_measure`)"
+                      },
+                      {
+                        "name": "measure(total_cost_measure)",
+                        "expression": "MEASURE(`total_cost_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 1,
+                "widgetType": "combo",
+                "encodings": {
+                  "x": {
+                    "fieldName": "created_date",
+                    "scale": {
+                      "type": "temporal"
+                    }
+                  },
+                  "y": {
+                    "primary": {
+                      "fields": [
+                        {
+                          "fieldName": "measure(total_work_orders_measure)",
+                          "displayName": "Work Orders (Bar)"
+                        }
+                      ],
+                      "scale": {
+                        "type": "quantitative"
+                      }
+                    },
+                    "secondary": {
+                      "fields": [
+                        {
+                          "fieldName": "measure(total_cost_measure)",
+                          "displayName": "Total Cost (Line)"
+                        }
+                      ],
+                      "scale": {
+                        "type": "quantitative"
+                      }
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Daily Work Orders and Cost Trends"
+                }
+              }
+            },
+            "position": {
+              "x": 0,
+              "y": 7,
+              "width": 6,
+              "height": 5
+            }
+          },
+          {
+            "widget": {
+              "name": "header",
+              "multilineTextboxSpec": {
+                "lines": [
+                  "<span style=\"font-size:24px\">**Maintenance Operations Dashboard**</span>"
+                ]
+              }
+            },
+            "position": {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 1
+            }
+          }
+        ],
+        "pageType": "PAGE_TYPE_CANVAS"
+      },
+      {
+        "name": "equipment",
+        "displayName": "Equipment Analysis",
+        "layout": [
+          {
+            "widget": {
+              "name": "equipment_breakdown",
+              "queries": [
+                {
+                  "name": "main_query",
+                  "query": {
+                    "datasetName": "dataset1",
+                    "fields": [
+                      {
+                        "name": "equipment_type",
+                        "expression": "`equipment_type`"
+                      },
+                      {
+                        "name": "measure(total_work_orders_measure)",
+                        "expression": "MEASURE(`total_work_orders_measure`)"
+                      },
+                      {
+                        "name": "measure(total_cost_measure)",
+                        "expression": "MEASURE(`total_cost_measure`)"
+                      }
+                    ],
+                    "disaggregated": false
+                  }
+                }
+              ],
+              "spec": {
+                "version": 3,
+                "widgetType": "bar",
+                "encodings": {
+                  "x": {
+                    "fieldName": "equipment_type",
+                    "scale": {
+                      "type": "categorical"
+                    }
+                  },
+                  "y": {
+                    "fields": [
+                      {
+                        "fieldName": "measure(total_work_orders_measure)"
+                      },
+                      {
+                        "fieldName": "measure(total_cost_measure)"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                },
+                "frame": {
+                  "showTitle": true,
+                  "title": "Equipment Maintenance by Type"
+                }
+              }
+            },
+            "position": {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 6
+            }
+          }
+        ],
+        "pageType": "PAGE_TYPE_CANVAS"
+      }
+    ],
+    "uiSettings": {
+      "theme": {
+        "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+      },
+      "genieSpace": {
+        "isEnabled": false,
+        "enablementMode": "ENABLEMENT_MODE_UNSPECIFIED"
+      },
+      "applyModeEnabled": false
+    }
+  }  

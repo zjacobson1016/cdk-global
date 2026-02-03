@@ -1,0 +1,41 @@
+# DLT Pipeline for new_product_feedback_categorization
+resources:
+  pipelines:
+    new_product_feedback_categorization_pipeline:
+      name: new_product_feedback_categorization_pipeline
+      
+      # Pipeline configuration
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+
+      # Pipeline libraries (notebooks or Python files)
+      libraries:
+        - notebook:
+            path: ../src/dlt_pipeline.py
+            
+      # Target catalog and schema
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      
+      # Development configuration
+      development: false
+      
+      # Pipeline mode - can be TRIGGERED or CONTINUOUS
+      continuous: false
+      
+      # Photon acceleration
+      photon: true
+      
+      # Serverless compute
+      serverless: true
+      
+      # Channel for DBR version
+      channel: current
+          
+      # Edition - CORE, PRO, or ADVANCED
+      edition: ADVANCED
+      
+      # Tags
+      tags:
+        project: "new_product_feedback_categorization"

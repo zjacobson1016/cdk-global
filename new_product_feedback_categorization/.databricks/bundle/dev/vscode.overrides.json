@@ -1,0 +1,5 @@
+{
+  "authProfile": "group-demo",
+  "serverless": true,
+  "useClusterOverride": false
+}

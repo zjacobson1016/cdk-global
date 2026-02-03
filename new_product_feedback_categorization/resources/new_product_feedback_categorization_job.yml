@@ -1,0 +1,35 @@
+# Jobs for new_product_feedback_categorization
+resources:
+  jobs:
+    # Job to run the metric view SQL script
+    new_product_feedback_categorization_create_metric_view:
+      name: "[${bundle.target}] new_product_feedback_categorization - Create Metric View"
+      tags:
+        project: "new_product_feedback_categorization"
+      tasks:
+        - task_key: create_metric_view
+          sql_task:
+            parameters: 
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ${workspace.file_path}/src/metric_view.sql
+
+    # Main workflow job
+    new_product_feedback_categorization_job:
+      name: new_product_feedback_categorization_job
+      tags:
+        project: "new_product_feedback_categorization"
+      tasks:
+        - task_key: dlt_pipeline_task
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.new_product_feedback_categorization_pipeline.id}
+            full_refresh: false
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              ["-r ${workspace.file_path}/src/requirements.txt"]

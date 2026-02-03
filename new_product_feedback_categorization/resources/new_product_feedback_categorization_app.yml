@@ -1,0 +1,29 @@
+# Databricks App resource for new_product_feedback_categorization
+resources:
+  apps:
+    new_product_feedback_categorization_app:
+      name: new_product_feedback_categorization-app
+      description: "Databricks App for new_product_feedback_categorization"
+      
+      source_code_path: ../src
+
+      config:
+        command:
+          - python
+          - app.py
+
+        env:
+        - name: "CATALOG_NAME"
+          value: ${var.catalog}
+        - name: "SCHEMA_NAME"
+          value: ${var.schema}
+        - name: "DATABRICKS_WAREHOUSE_ID"
+          value: ${var.warehouse_id}
+    
+      resources:
+        # SQL Warehouse for data queries
+        - name: sql-warehouse
+          description: "SQL warehouse for querying data"
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

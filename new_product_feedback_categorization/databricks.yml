@@ -1,0 +1,38 @@
+# Databricks Asset Bundle for new_product_feedback_categorization
+# Generated from QBR Demo Template
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: new_product_feedback_categorization
+
+include:
+  - resources/new_product_feedback_categorization_pipeline.yml
+  - resources/new_product_feedback_categorization_job.yml
+
+variables:
+  catalog:
+    description: "Default catalog for the project"
+    default: "mfg_mc_se_sa"
+  schema:
+    description: "Default schema for the project"
+    default: "cdk"
+  warehouse_id:
+    description: "SQL Warehouse ID for dashboards and apps"
+    default: "bce0a02b2be86f1b"
+
+targets:
+  # The 'dev' target, used for development purposes.
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com/
+
+  # The 'prod' target, used for production deployment.
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com/
+      root_path: /Shared/.bundle/prod/${bundle.name}
+    run_as:
+      user_name: zach.jacobson@databricks.com

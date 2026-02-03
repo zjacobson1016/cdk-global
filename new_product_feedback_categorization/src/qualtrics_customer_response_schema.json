@@ -1,0 +1,346 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Qualtrics New Product Survey Customer Response",
+    "description": "Schema for individual customer responses to new product launch surveys",
+    "type": "object",
+    "properties": {
+      "meta": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "Unique identifier for the API request",
+            "example": "resp-a1b2c3d4-e5f6-7890"
+          },
+          "httpStatus": {
+            "type": "string",
+            "example": "200 - OK"
+          }
+        }
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "responseId": {
+            "type": "string",
+            "description": "Unique Qualtrics response identifier",
+            "example": "R_3HJkL9mNoPqRsTu"
+          },
+          "surveyId": {
+            "type": "string",
+            "description": "Survey this response belongs to",
+            "example": "SV_abc123XYZ789def"
+          },
+          "responseStatus": {
+            "type": "string",
+            "enum": ["Complete", "Partial", "InProgress"],
+            "description": "Completion status of the response"
+          },
+          "distributionChannel": {
+            "type": "string",
+            "enum": ["email", "anonymous", "social", "qr", "sms", "preview"],
+            "example": "email"
+          },
+          "timestamps": {
+            "type": "object",
+            "properties": {
+              "startDate": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the respondent started the survey",
+                "example": "2026-02-11T14:23:45Z"
+              },
+              "endDate": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the respondent completed the survey",
+                "example": "2026-02-11T14:31:22Z"
+              },
+              "recordedDate": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the response was recorded in Qualtrics",
+                "example": "2026-02-11T14:31:23Z"
+              },
+              "durationSeconds": {
+                "type": "integer",
+                "description": "Total time spent on the survey in seconds",
+                "example": 457
+              }
+            }
+          },
+          "respondent": {
+            "type": "object",
+            "description": "Information about the survey respondent",
+            "properties": {
+              "recipientId": {
+                "type": "string",
+                "description": "Qualtrics contact/recipient ID if from a panel",
+                "example": "MLRP_abc123xyz"
+              },
+              "externalDataReference": {
+                "type": "string",
+                "description": "External customer ID passed via embedded data",
+                "example": "CUST-2026-78901"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "example": "customer@example.com"
+              },
+              "firstName": {
+                "type": "string",
+                "example": "John"
+              },
+              "lastName": {
+                "type": "string",
+                "example": "Smith"
+              },
+              "ipAddress": {
+                "type": "string",
+                "format": "ipv4",
+                "example": "192.168.1.100"
+              },
+              "userAgent": {
+                "type": "string",
+                "example": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+              }
+            }
+          },
+          "locationData": {
+            "type": "object",
+            "properties": {
+              "latitude": {
+                "type": "number",
+                "example": 40.7128
+              },
+              "longitude": {
+                "type": "number",
+                "example": -74.0060
+              },
+              "city": {
+                "type": "string",
+                "example": "New York"
+              },
+              "state": {
+                "type": "string",
+                "example": "NY"
+              },
+              "country": {
+                "type": "string",
+                "example": "United States"
+              },
+              "postalCode": {
+                "type": "string",
+                "example": "10001"
+              }
+            }
+          },
+          "embeddedData": {
+            "type": "object",
+            "description": "Custom embedded data fields passed into the survey",
+            "properties": {
+              "customerSegment": {
+                "type": "string",
+                "example": "Enterprise"
+              },
+              "productInterest": {
+                "type": "string",
+                "example": "SmartWidget Pro 3000"
+              },
+              "accountId": {
+                "type": "string",
+                "example": "ACC-12345"
+              },
+              "salesRepId": {
+                "type": "string",
+                "example": "SR-789"
+              },
+              "campaignSource": {
+                "type": "string",
+                "example": "product_launch_email_feb2026"
+              }
+            },
+            "additionalProperties": true
+          },
+          "answers": {
+            "type": "object",
+            "description": "Customer responses to survey questions",
+            "properties": {
+              "productAwareness": {
+                "type": "object",
+                "description": "QID1: How did you first hear about the new product?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID1" },
+                  "questionType": { "type": "string", "example": "MC" },
+                  "selectedChoice": { "type": "string", "example": "Email from company" },
+                  "selectedChoiceId": { "type": "string", "example": "1" },
+                  "selectedChoiceRecode": { "type": "integer", "example": 1 }
+                }
+              },
+              "purchaseIntent": {
+                "type": "object",
+                "description": "QID2: How likely are you to purchase this product?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID2" },
+                  "questionType": { "type": "string", "example": "MC" },
+                  "selectedChoice": { "type": "string", "example": "Very likely" },
+                  "selectedChoiceId": { "type": "string", "example": "5" },
+                  "selectedChoiceRecode": { "type": "integer", "example": 5 }
+                }
+              },
+              "npsScore": {
+                "type": "object",
+                "description": "QID3: On a scale of 0-10, how likely are you to recommend this product?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID3" },
+                  "questionType": { "type": "string", "example": "NPS" },
+                  "score": { "type": "integer", "minimum": 0, "maximum": 10, "example": 8 },
+                  "npsCategory": { 
+                    "type": "string", 
+                    "enum": ["Detractor", "Passive", "Promoter"],
+                    "example": "Passive"
+                  }
+                }
+              },
+              "featureImportance": {
+                "type": "object",
+                "description": "QID4: Rate the importance of the following features",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID4" },
+                  "questionType": { "type": "string", "example": "Matrix" },
+                  "responses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "featureName": { "type": "string" },
+                        "rating": { "type": "string" },
+                        "ratingRecode": { "type": "integer" }
+                      }
+                    },
+                    "example": [
+                      { "featureName": "Ease of use", "rating": "Very Important", "ratingRecode": 5 },
+                      { "featureName": "Price", "rating": "Important", "ratingRecode": 4 },
+                      { "featureName": "Design", "rating": "Somewhat Important", "ratingRecode": 3 },
+                      { "featureName": "Durability", "rating": "Very Important", "ratingRecode": 5 }
+                    ]
+                  }
+                }
+              },
+              "pricePerception": {
+                "type": "object",
+                "description": "QID5: How would you rate the product's value for its price?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID5" },
+                  "questionType": { "type": "string", "example": "Slider" },
+                  "value": { "type": "integer", "minimum": 0, "maximum": 100, "example": 72 }
+                }
+              },
+              "competitorComparison": {
+                "type": "object",
+                "description": "QID6: Compared to competitor products, this product is...",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID6" },
+                  "questionType": { "type": "string", "example": "MC" },
+                  "selectedChoice": { "type": "string", "example": "Better" },
+                  "selectedChoiceId": { "type": "string", "example": "4" },
+                  "selectedChoiceRecode": { "type": "integer", "example": 4 }
+                }
+              },
+              "featureRanking": {
+                "type": "object",
+                "description": "QID7: Rank the following features in order of importance",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID7" },
+                  "questionType": { "type": "string", "example": "RankOrder" },
+                  "rankings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "featureName": { "type": "string" },
+                        "rank": { "type": "integer" }
+                      }
+                    },
+                    "example": [
+                      { "featureName": "Performance", "rank": 1 },
+                      { "featureName": "Price", "rank": 2 },
+                      { "featureName": "Support", "rank": 3 },
+                      { "featureName": "Design", "rank": 4 }
+                    ]
+                  }
+                }
+              },
+              "openFeedback": {
+                "type": "object",
+                "description": "QID8: Please share any additional feedback about the product",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID8" },
+                  "questionType": { "type": "string", "example": "TE" },
+                  "textResponse": { 
+                    "type": "string", 
+                    "example": "I really like the new design and features. Would love to see more color options."
+                  }
+                }
+              },
+              "purchaseTimeline": {
+                "type": "object",
+                "description": "QID9: When do you plan to make a purchase decision?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID9" },
+                  "questionType": { "type": "string", "example": "MC" },
+                  "selectedChoice": { "type": "string", "example": "Within 1-3 months" },
+                  "selectedChoiceId": { "type": "string", "example": "2" },
+                  "selectedChoiceRecode": { "type": "integer", "example": 2 }
+                }
+              },
+              "followUpConsent": {
+                "type": "object",
+                "description": "QID10: May we contact you for follow-up questions?",
+                "properties": {
+                  "questionId": { "type": "string", "example": "QID10" },
+                  "questionType": { "type": "string", "example": "MC" },
+                  "selectedChoice": { "type": "string", "example": "Yes" },
+                  "selectedChoiceId": { "type": "string", "example": "1" },
+                  "consentGiven": { "type": "boolean", "example": true }
+                }
+              }
+            }
+          },
+          "scoring": {
+            "type": "object",
+            "description": "Calculated scores and classifications",
+            "properties": {
+              "overallSentimentScore": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "Aggregated sentiment from all responses (-1 to 1)",
+                "example": 0.72
+              },
+              "purchaseReadinessScore": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Calculated likelihood to purchase",
+                "example": 78
+              },
+              "customerSegmentPredicted": {
+                "type": "string",
+                "enum": ["High Value Prospect", "Interested", "Curious", "Not Interested"],
+                "example": "High Value Prospect"
+              },
+              "npsCategory": {
+                "type": "string",
+                "enum": ["Detractor", "Passive", "Promoter"],
+                "example": "Passive"
+              }
+            }
+          }
+        },
+        "required": ["responseId", "surveyId", "responseStatus", "timestamps", "answers"]
+      }
+    }
+  }
+  

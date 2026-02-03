@@ -1,0 +1,40 @@
+# Model Serving Endpoint resource for new_product_feedback_categorization
+# Reference: https://docs.databricks.com/api/workspace/servingendpoints/create
+resources:
+  model_serving_endpoints:
+    new_product_feedback_categorization_serving_endpoint:
+      name: new_product_feedback_categorization-serving-endpoint
+      
+      config:
+        served_entities:
+          - name: new_product_feedback_categorization_model_v1
+            entity_name: "${var.catalog}.${var.schema}.${var.model_name}"
+            entity_version: "1"
+            
+            # Workload size - can be Small, Medium, or Large
+            workload_size: "Small"
+            
+            # Scale to zero settings
+            scale_to_zero_enabled: true
+            
+            # Workload type
+            workload_type: "CPU"
+            
+            # Environment variables
+            environment_vars:
+              CATALOG: "${var.catalog}"
+              SCHEMA: "${var.schema}"
+        
+        # Auto capture configuration for monitoring
+        auto_capture_config:
+          catalog_name: "${var.catalog}"
+          schema_name: "${var.schema}"
+          table_name_prefix: "new_product_feedback_categorization_endpoint"
+          enabled: true
+      
+      # Tags
+      tags:
+        - key: "project"
+          value: "new_product_feedback_categorization"
+        - key: "environment"
+          value: "${bundle.target}"
