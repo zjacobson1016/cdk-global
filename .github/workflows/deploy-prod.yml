@@ -15,7 +15,7 @@ jobs:
     
     defaults:
       run:
-        working-directory: new_product_feedback_categorization
+        working-directory: cdk-global/new_product_feedback_categorization
 
     steps:
       - name: Checkout repository
