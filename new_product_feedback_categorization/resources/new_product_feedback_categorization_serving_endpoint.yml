@@ -4,6 +4,7 @@ resources:
   model_serving_endpoints:
     new_product_feedback_categorization_serving_endpoint:
       name: new_product_feedback_categorization-serving-endpoint
+      budget_policy_id: ${var.budget_policy_id}
       
       config:
         served_entities:

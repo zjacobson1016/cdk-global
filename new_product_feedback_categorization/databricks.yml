@@ -9,6 +9,10 @@ include:
   - resources/new_product_feedback_categorization_pipeline.yml
   - resources/new_product_feedback_categorization_job.yml
 
+scripts:
+  qualtrics_response_writer:
+    content: python src/qualtrics_response_writer.py
+
 variables:
   catalog:
     description: "Default catalog for the project"
@@ -19,6 +23,9 @@ variables:
   warehouse_id:
     description: "SQL Warehouse ID for dashboards and apps"
     default: "bce0a02b2be86f1b"
+  budget_policy_id:
+    description: "Budget policy ID for cost attribution"
+    default: "5b1cd9b7-9295-45e7-aab7-d7942bd4dfa3"
 
 targets:
   # The 'dev' target, used for development purposes.

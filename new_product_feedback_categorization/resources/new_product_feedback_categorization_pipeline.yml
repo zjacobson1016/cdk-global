@@ -3,11 +3,14 @@ resources:
   pipelines:
     new_product_feedback_categorization_pipeline:
       name: new_product_feedback_categorization_pipeline
-      
+      budget_policy_id: ${var.budget_policy_id}
+      environment:
+        dependencies: ["-r ${workspace.file_path}/src/requirements_model.txt"]
       # Pipeline configuration
       configuration:
         catalog: ${var.catalog}
         schema: ${var.schema}
+
 
       # Pipeline libraries (notebooks or Python files)
       libraries:
@@ -25,7 +28,7 @@ resources:
       continuous: false
       
       # Photon acceleration
-      photon: true
+      photon: false
       
       # Serverless compute
       serverless: true

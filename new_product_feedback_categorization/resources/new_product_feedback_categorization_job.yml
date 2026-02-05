@@ -2,23 +2,24 @@
 resources:
   jobs:
     # Job to run the metric view SQL script
-    new_product_feedback_categorization_create_metric_view:
-      name: "[${bundle.target}] new_product_feedback_categorization - Create Metric View"
-      tags:
-        project: "new_product_feedback_categorization"
-      tasks:
-        - task_key: create_metric_view
-          sql_task:
-            parameters: 
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-            warehouse_id: ${var.warehouse_id}
-            file:
-              path: ${workspace.file_path}/src/metric_view.sql
+    # new_product_feedback_categorization_create_metric_view:
+    #   name: "[${bundle.target}] new_product_feedback_categorization - Create Metric View"
+    #   tags:
+    #     project: "new_product_feedback_categorization"
+    #   tasks:
+    #     - task_key: create_metric_view
+    #       sql_task:
+    #         parameters: 
+    #           catalog: ${var.catalog}
+    #           schema: ${var.schema}
+    #         warehouse_id: ${var.warehouse_id}
+    #         file:
+    #           path: ${workspace.file_path}/src/metric_view.sql
 
     # Main workflow job
     new_product_feedback_categorization_job:
       name: new_product_feedback_categorization_job
+      budget_policy_id: ${var.budget_policy_id}
       tags:
         project: "new_product_feedback_categorization"
       tasks:
@@ -32,4 +33,4 @@ resources:
           spec:
             client: "3"
             dependencies:
-              ["-r ${workspace.file_path}/src/requirements.txt"]
+              ["-r ${workspace.file_path}/src/requirements_model.txt"]

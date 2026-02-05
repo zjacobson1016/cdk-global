@@ -4,6 +4,7 @@ resources:
     new_product_feedback_categorization_app:
       name: new_product_feedback_categorization-app
       description: "Databricks App for new_product_feedback_categorization"
+      budget_policy_id: ${var.budget_policy_id}
       
       source_code_path: ../src
 

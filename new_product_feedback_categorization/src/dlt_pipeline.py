@@ -3,7 +3,6 @@
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import *
 
 # COMMAND ----------
 
@@ -11,267 +10,38 @@ from pyspark.sql.types import *
 # MAGIC ## Configuration
 # MAGIC 
 # MAGIC The catalog and schema are automatically configured via the pipeline configuration.
-# MAGIC Volume paths are configured for Auto Loader ingestion.
+# MAGIC Volume paths are configured for Auto Loader ingestion of Qualtrics survey responses.
 
 # COMMAND ----------
 
 # Get pipeline configuration
 import os
 from dotenv import load_dotenv
-load_dotenv()
-env_path = "/Workspace/Users/zach.jacobson@databricks.com/.bundle/zach-demo-qbr/dev/files/.env"
+env_path = "/Workspace/Users/zach.jacobson@databricks.com/.bundle/new_product_feedback_categorization/dev/files/.env"
 load_dotenv(dotenv_path=env_path, override=True)
 
 # Configurable volume locations for Auto Loader ingestion
-catalog_name = os.getenv("CATALOG_NAME", "mfg_mid_central_sa")
-schema_name = os.getenv("SCHEMA_NAME", "qbr_demo")
-volume_name = "quotes_volume"
+catalog_name = os.getenv("CATALOG_NAME", "mfg_mc_se_sa")
+schema_name = os.getenv("SCHEMA_NAME", "cdk")
+volume_name = os.getenv("VOLUME_FOLDER_NAME", "survey_responses")
 
-# Subdirectories within the volume
-quotes_subdir = "quotes"
-notes_subdir = "quote_notes"
-customers_subdir = "customers"
-products_subdir = "products"
-qualtrics_responses_subdir = "qualtrics_responses"
-
-# Schema locations for Auto Loader
+# Source path for Qualtrics survey responses
 VOLUME_BASE_PATH = f"/Volumes/{catalog_name}/{schema_name}/{volume_name}"
-QUOTES_SOURCE_PATH = f"{VOLUME_BASE_PATH}/{quotes_subdir}"
-QUOTES_SCHEMA_LOCATION = f"{VOLUME_BASE_PATH}/_schema/bronze_quotes"
-NOTES_SOURCE_PATH = f"{VOLUME_BASE_PATH}/{notes_subdir}"
-NOTES_SCHEMA_LOCATION = f"{VOLUME_BASE_PATH}/_schema/bronze_notes"
-CUSTOMERS_SOURCE_PATH = f"{VOLUME_BASE_PATH}/{customers_subdir}"
-CUSTOMERS_SCHEMA_LOCATION = f"{VOLUME_BASE_PATH}/_schema/bronze_customers"
-PRODUCTS_SOURCE_PATH = f"{VOLUME_BASE_PATH}/{products_subdir}"
-PRODUCTS_SCHEMA_LOCATION = f"{VOLUME_BASE_PATH}/_schema/bronze_products"
-QUALTRICS_RESPONSES_SOURCE_PATH = f"{VOLUME_BASE_PATH}/{qualtrics_responses_subdir}"
-QUALTRICS_RESPONSES_SCHEMA_LOCATION = f"{VOLUME_BASE_PATH}/_schema/bronze_qualtrics_responses"
+QUALTRICS_RESPONSES_SOURCE_PATH = f"{VOLUME_BASE_PATH}/qualtrics/"
 
 print(f"Pipeline catalog: {catalog_name}")
 print(f"Pipeline schema: {schema_name}")
-print(f"Volume base path: {VOLUME_BASE_PATH}")
+print(f"Qualtrics source path: {QUALTRICS_RESPONSES_SOURCE_PATH}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Schema Definitions
+# MAGIC ## Bronze Layer - Qualtrics Survey Responses
 # MAGIC 
-# MAGIC Schemas matching the quote_volume_writer.py output
+# MAGIC Ingests raw Qualtrics new product survey customer responses using Auto Loader.
+# MAGIC The full JSON payload is stored as a VARIANT column for flexible downstream processing.
 
 # COMMAND ----------
-
-# Schema for quotes matching the volume writer
-quote_schema = StructType([
-    StructField("id", StringType(), False),
-    StructField("customer_id", StringType(), False),
-    StructField("customer_name", StringType(), True),
-    StructField("location", StringType(), True),
-    StructField("product_id", StringType(), False),
-    StructField("product_description", StringType(), True),
-    StructField("quantity", IntegerType(), False),
-    StructField("unit_price", DoubleType(), False),
-    StructField("total_price", DoubleType(), False),
-    StructField("lead_time", IntegerType(), True),
-    StructField("order_date", StringType(), True),
-    StructField("status", StringType(), False),
-    StructField("priority", StringType(), False),
-    StructField("email_source", StringType(), True),
-    StructField("email_subject", StringType(), True),
-    StructField("email_body", StringType(), True),
-    StructField("email_received_at", StringType(), True),
-    StructField("created_at", StringType(), True),
-    StructField("assigned_reviewer", StringType(), True),
-    StructField("updated_at", StringType(), True),
-])
-
-quote_note_schema = StructType([
-    StructField("id", StringType(), False),
-    StructField("quote_id", StringType(), False),
-    StructField("content", StringType(), True),
-    StructField("note_type", StringType(), True),
-    StructField("reviewer", StringType(), True),
-    StructField("created_at", StringType(), True),
-])
-
-customer_schema = StructType([
-    StructField("customer_id", StringType(), False),
-    StructField("company_name", StringType(), True),
-    StructField("contact_person", StringType(), True),
-    StructField("email", StringType(), True),
-    StructField("phone", StringType(), True),
-    StructField("address", StringType(), True),
-    StructField("created_at", StringType(), True),
-])
-
-product_schema = StructType([
-    StructField("product_id", StringType(), False),
-    StructField("product_name", StringType(), True),
-    StructField("description", StringType(), True),
-    StructField("category", StringType(), True),
-    StructField("unit_price", DoubleType(), True),
-    StructField("availability_status", StringType(), True),
-    StructField("created_at", StringType(), True),
-])
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Bronze Layer - Auto Loader Ingestion from UC Volume
-
-# COMMAND ----------
-
-@dlt.table(
-    name="bronze_automated_quotes",
-    comment="Raw automated quote data ingested from JSON files via Auto Loader",
-    table_properties={
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true",
-        "delta.enableChangeDataFeed": "true"
-    }
-)
-def bronze_automated_quotes():
-    """
-    Read quote JSON files arriving in the Unity Catalog volume and
-    land them as the bronze Delta table.
-    """
-    return (
-        spark.readStream
-            .format("cloudFiles")
-            .option("cloudFiles.format", "json")
-            .option("cloudFiles.schemaLocation", QUOTES_SCHEMA_LOCATION)
-            .option("pathGlobFilter", "*.json")
-            .schema(quote_schema)
-            .load(QUOTES_SOURCE_PATH)
-            .select(
-                F.col("id"),
-                F.col("customer_id"),
-                F.col("customer_name"),
-                F.col("location"),
-                F.col("product_id"),
-                F.col("product_description"),
-                F.col("quantity"),
-                F.col("unit_price").cast("decimal(10,2)"),
-                F.col("total_price").cast("decimal(10,2)"),
-                F.col("lead_time"),
-                F.to_date("order_date").alias("order_date"),
-                F.col("status"),
-                F.col("priority"),
-                F.col("email_source"),
-                F.col("email_subject"),
-                F.col("email_body"),
-                F.to_timestamp("email_received_at").alias("email_received_at"),
-                F.to_timestamp("created_at").alias("created_at"),
-                F.col("assigned_reviewer"),
-                F.to_timestamp("updated_at").alias("updated_at"),
-                F.col("_metadata.file_path").alias("_source_file"),
-                F.current_timestamp().alias("_bronze_ingestion_time")
-            )
-    )
-
-
-@dlt.table(
-    name="bronze_quote_notes",
-    comment="Raw quote notes ingested from JSON files via Auto Loader",
-    table_properties={
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true",
-        "delta.enableChangeDataFeed": "true"
-    }
-)
-def bronze_quote_notes():
-    """
-    Read quote notes JSON files from the Unity Catalog volume.
-    """
-    return (
-        spark.readStream
-            .format("cloudFiles")
-            .option("cloudFiles.format", "json")
-            .option("cloudFiles.schemaLocation", NOTES_SCHEMA_LOCATION)
-            .option("pathGlobFilter", "*.json")
-            .schema(quote_note_schema)
-            .load(NOTES_SOURCE_PATH)
-            .select(
-                F.col("id"),
-                F.col("quote_id"),
-                F.col("content"),
-                F.col("note_type"),
-                F.col("reviewer"),
-                F.to_timestamp("created_at").alias("created_at"),
-                F.col("_metadata.file_path").alias("_source_file"),
-                F.current_timestamp().alias("_bronze_ingestion_time")
-            )
-    )
-
-
-@dlt.table(
-    name="bronze_customers",
-    comment="Raw customer data ingested from JSON files via Auto Loader",
-    table_properties={
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true",
-        "delta.enableChangeDataFeed": "true"
-    }
-)
-def bronze_customers():
-    """
-    Read customer JSON files from the Unity Catalog volume.
-    """
-    return (
-        spark.readStream
-            .format("cloudFiles")
-            .option("cloudFiles.format", "json")
-            .option("cloudFiles.schemaLocation", CUSTOMERS_SCHEMA_LOCATION)
-            .option("pathGlobFilter", "*.json")
-            .schema(customer_schema)
-            .load(CUSTOMERS_SOURCE_PATH)
-            .select(
-                F.col("customer_id"),
-                F.col("company_name"),
-                F.col("contact_person"),
-                F.col("email"),
-                F.col("phone"),
-                F.col("address"),
-                F.to_timestamp("created_at").alias("customer_created_at"),
-                F.col("_metadata.file_path").alias("_source_file"),
-                F.current_timestamp().alias("_bronze_ingestion_time")
-            )
-    )
-
-
-@dlt.table(
-    name="bronze_products",
-    comment="Raw product catalog data ingested from JSON files via Auto Loader",
-    table_properties={
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true",
-        "delta.enableChangeDataFeed": "true"
-    }
-)
-def bronze_products():
-    """
-    Read product JSON files from the Unity Catalog volume.
-    """
-    return (
-        spark.readStream
-            .format("cloudFiles")
-            .option("cloudFiles.format", "json")
-            .option("cloudFiles.schemaLocation", PRODUCTS_SCHEMA_LOCATION)
-            .option("pathGlobFilter", "*.json")
-            .schema(product_schema)
-            .load(PRODUCTS_SOURCE_PATH)
-            .select(
-                F.col("product_id"),
-                F.col("product_name"),
-                F.col("description"),
-                F.col("category"),
-                F.col("unit_price").cast("decimal(10,2)"),
-                F.col("availability_status"),
-                F.to_timestamp("created_at").alias("product_created_at"),
-                F.col("_metadata.file_path").alias("_source_file"),
-                F.current_timestamp().alias("_bronze_ingestion_time")
-            )
-    )
-
 
 @dlt.table(
     name="bronze_qualtrics_survey_responses",
@@ -279,7 +49,8 @@ def bronze_products():
     table_properties={
         "quality": "bronze",
         "pipelines.autoOptimize.managed": "true",
-        "delta.enableChangeDataFeed": "true"
+        "delta.enableChangeDataFeed": "true",
+        "delta.feature.variantType-preview" : "supported"
     }
 )
 def bronze_qualtrics_survey_responses():
@@ -297,523 +68,237 @@ def bronze_qualtrics_survey_responses():
       - embeddedData (customerSegment, productInterest, accountId, etc.)
       - answers (productAwareness, purchaseIntent, npsScore, featureImportance, etc.)
       - scoring (overallSentimentScore, purchaseReadinessScore, customerSegmentPredicted)
+    
+    Query examples using VARIANT column:
+      SELECT response_payload:result.responseId FROM bronze_qualtrics_survey_responses
+      SELECT response_payload:result.answers.npsScore.score FROM bronze_qualtrics_survey_responses
+      SELECT response_payload:result.answers.openFeedback.textResponse FROM bronze_qualtrics_survey_responses
     """
     return (
         spark.readStream
             .format("cloudFiles")
-            .option("cloudFiles.format", "text")  # Read as text to preserve raw JSON
-            .option("wholetext", "true")  # Read entire file as single row
-            .option("pathGlobFilter", "*.json")
+            .option("cloudFiles.format", "json")
+            .option("singleVariantColumn", "response_payload")
+            .option("cloudFiles.schemaLocation",VOLUME_BASE_PATH)
             .load(QUALTRICS_RESPONSES_SOURCE_PATH)
-            .select(
-                # Parse the raw JSON text to VARIANT type
-                F.parse_json(F.col("value")).alias("response_payload"),
-                # Extract key fields for easier querying while keeping full payload
-                F.get_json_object(F.col("value"), "$.result.responseId").alias("response_id"),
-                F.get_json_object(F.col("value"), "$.result.surveyId").alias("survey_id"),
-                F.get_json_object(F.col("value"), "$.result.responseStatus").alias("response_status"),
-                F.get_json_object(F.col("value"), "$.result.distributionChannel").alias("distribution_channel"),
-                # Timestamp fields
-                F.to_timestamp(
-                    F.get_json_object(F.col("value"), "$.result.timestamps.startDate")
-                ).alias("survey_start_date"),
-                F.to_timestamp(
-                    F.get_json_object(F.col("value"), "$.result.timestamps.endDate")
-                ).alias("survey_end_date"),
-                F.to_timestamp(
-                    F.get_json_object(F.col("value"), "$.result.timestamps.recordedDate")
-                ).alias("recorded_date"),
-                F.get_json_object(F.col("value"), "$.result.timestamps.durationSeconds").cast("integer").alias("duration_seconds"),
-                # Respondent fields
-                F.get_json_object(F.col("value"), "$.result.respondent.externalDataReference").alias("external_customer_id"),
-                F.get_json_object(F.col("value"), "$.result.respondent.email").alias("respondent_email"),
-                # Location fields
-                F.get_json_object(F.col("value"), "$.result.locationData.city").alias("respondent_city"),
-                F.get_json_object(F.col("value"), "$.result.locationData.state").alias("respondent_state"),
-                F.get_json_object(F.col("value"), "$.result.locationData.country").alias("respondent_country"),
-                # Embedded data fields
-                F.get_json_object(F.col("value"), "$.result.embeddedData.customerSegment").alias("customer_segment"),
-                F.get_json_object(F.col("value"), "$.result.embeddedData.productInterest").alias("product_interest"),
-                F.get_json_object(F.col("value"), "$.result.embeddedData.accountId").alias("account_id"),
-                F.get_json_object(F.col("value"), "$.result.embeddedData.campaignSource").alias("campaign_source"),
-                # Key answer fields - NPS Score
-                F.get_json_object(F.col("value"), "$.result.answers.npsScore.score").cast("integer").alias("nps_score"),
-                F.get_json_object(F.col("value"), "$.result.answers.npsScore.npsCategory").alias("nps_category"),
-                # Key answer fields - Purchase Intent
-                F.get_json_object(F.col("value"), "$.result.answers.purchaseIntent.selectedChoice").alias("purchase_intent"),
-                F.get_json_object(F.col("value"), "$.result.answers.purchaseIntent.selectedChoiceRecode").cast("integer").alias("purchase_intent_score"),
-                # Key answer fields - Open Feedback
-                F.get_json_object(F.col("value"), "$.result.answers.openFeedback.textResponse").alias("open_feedback_text"),
-                # Scoring fields
-                F.get_json_object(F.col("value"), "$.result.scoring.overallSentimentScore").cast("double").alias("sentiment_score"),
-                F.get_json_object(F.col("value"), "$.result.scoring.purchaseReadinessScore").cast("integer").alias("purchase_readiness_score"),
-                F.get_json_object(F.col("value"), "$.result.scoring.customerSegmentPredicted").alias("predicted_customer_segment"),
-                # Metadata
-                F.col("_metadata.file_path").alias("_source_file"),
-                F.current_timestamp().alias("_bronze_ingestion_time")
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Silver Layer - Structured Survey Responses with AI-Derived Sentiment
+# MAGIC 
+# MAGIC Extracts fields from the VARIANT column into a structured table.
+# MAGIC Uses Databricks AI Query to derive sentiment classification from survey responses.
+
+# COMMAND ----------
+
+# AI Model endpoint for sentiment analysis
+AI_MODEL_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
+
+@dlt.table(
+    name="silver_survey_responses",
+    comment="Structured survey responses with AI-derived sentiment classification",
+    table_properties={
+        "quality": "silver",
+        "pipelines.autoOptimize.managed": "true"
+    }
+)
+def silver_survey_responses():
+    """
+    Extract structured fields from bronze VARIANT column and derive sentiment using AI.
+    
+    Extracted fields:
+    - Response metadata (responseId, surveyId, status, channel)
+    - Timestamps (startDate, endDate, duration)
+    - Respondent info (customerId, email, name, location)
+    - Embedded data (customerSegment, productInterest, campaign)
+    - Survey answers (NPS, purchase intent, competitor comparison, open feedback)
+    - Pre-calculated scores (sentiment, purchase readiness, predicted segment)
+    - AI-derived sentiment classification
+    """
+    # Helper function to convert Python dict string representation to valid JSON
+    # Python uses: single quotes, True, False, None, nan
+    # JSON uses: double quotes, true, false, null, null
+    # IMPORTANT: Replace structural quotes only, not apostrophes in text (e.g., "I'm", "don't")
+    def python_dict_to_json_col(df, col_name: str, output_col: str):
+        """Apply chained regexp_replace to convert Python dict string to JSON string.
+        
+        Uses targeted regex patterns to replace only structural single quotes,
+        preserving apostrophes within text values like "I'm" or "don't".
+        """
+        return (
+            df
+            # First handle Python literals
+            .withColumn(output_col, F.regexp_replace(F.col(col_name), 'nan', 'null'))
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), 'True', 'true'))
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), 'False', 'false'))
+            # Replace structural quotes - patterns where single quote is part of JSON structure
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "\\{'", '{"'))      # {'key -> {"key
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "'\\}", '"}'))      # 'value} -> "value}
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "': '", '": "'))    # ': ' -> ": "
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "', '", '", "'))    # ', ' -> ", "
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "': \\{", '": {'))  # ': { -> ": {
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "': \\[", '": ['))  # ': [ -> ": [
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "'\\]", '"]'))      # '] -> "]
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "\\['", '["'))      # [' -> ["
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "', \\{", '", {'))  # ', { -> ", {
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "', \\[", '", ['))  # ', [ -> ", [
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "':", '":'))        # remaining key endings 'key: -> "key:
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), ", '", ', "'))      # remaining , 'value -> , "value
+            .withColumn(output_col, F.regexp_replace(F.col(output_col), "': ", '": '))      # 'key': value -> "key": value (numbers)
+        )
+    
+    # Start with the bronze stream
+    df = dlt.read_stream("bronze_qualtrics_survey_responses")
+    
+    # Extract response metadata - these are direct STRING fields in result object
+    df = (
+        df
+        .withColumn("response_id", F.expr("response_payload:result:responseId::STRING"))
+        .withColumn("survey_id", F.expr("response_payload:result:surveyId::STRING"))
+        .withColumn("response_status", F.expr("response_payload:result:responseStatus::STRING"))
+        .withColumn("distribution_channel", F.expr("response_payload:result:distributionChannel::STRING"))
+        
+        # Extract raw Python dict strings from VARIANT
+        .withColumn("timestamps_raw", F.expr("response_payload:result:timestamps::STRING"))
+        .withColumn("respondent_raw", F.expr("response_payload:result:respondent::STRING"))
+        .withColumn("location_raw", F.expr("response_payload:result:locationData::STRING"))
+        .withColumn("embedded_raw", F.expr("response_payload:result:embeddedData::STRING"))
+        .withColumn("answers_raw", F.expr("response_payload:result:answers::STRING"))
+        .withColumn("scoring_raw", F.expr("response_payload:result:scoring::STRING"))
+    )
+    
+    # Convert Python dict strings to valid JSON (handles apostrophes in text)
+    df = python_dict_to_json_col(df, "timestamps_raw", "timestamps_json")
+    df = python_dict_to_json_col(df, "respondent_raw", "respondent_json")
+    df = python_dict_to_json_col(df, "location_raw", "location_json")
+    df = python_dict_to_json_col(df, "embedded_raw", "embedded_json")
+    df = python_dict_to_json_col(df, "answers_raw", "answers_json")
+    df = python_dict_to_json_col(df, "scoring_raw", "scoring_json")
+    
+    # Parse the JSON strings into VARIANT objects
+    df = (
+        df
+        .withColumn("timestamps_obj", F.expr("parse_json(timestamps_json)"))
+        .withColumn("respondent_obj", F.expr("parse_json(respondent_json)"))
+        .withColumn("location_obj", F.expr("parse_json(location_json)"))
+        .withColumn("embedded_obj", F.expr("parse_json(embedded_json)"))
+        .withColumn("answers_obj", F.expr("parse_json(answers_json)"))
+        .withColumn("scoring_obj", F.expr("parse_json(scoring_json)"))
+    )
+    
+    # Extract all fields and build final DataFrame
+    df = (
+        df
+        # Extract timestamps from parsed object
+        .withColumn("survey_start_date", F.to_timestamp(F.expr("timestamps_obj:startDate::STRING")))
+        .withColumn("survey_end_date", F.to_timestamp(F.expr("timestamps_obj:endDate::STRING")))
+        .withColumn("recorded_date", F.to_timestamp(F.expr("timestamps_obj:recordedDate::STRING")))
+        .withColumn("duration_seconds", F.expr("timestamps_obj:durationSeconds::INT"))
+        
+        # Extract respondent info from parsed object
+        .withColumn("external_customer_id", F.expr("respondent_obj:externalDataReference::STRING"))
+        .withColumn("respondent_email", F.expr("respondent_obj:email::STRING"))
+        .withColumn("respondent_first_name", F.expr("respondent_obj:firstName::STRING"))
+        .withColumn("respondent_last_name", F.expr("respondent_obj:lastName::STRING"))
+        
+        # Extract location from parsed object
+        .withColumn("respondent_city", F.expr("location_obj:city::STRING"))
+        .withColumn("respondent_state", F.expr("location_obj:state::STRING"))
+        .withColumn("respondent_country", F.expr("location_obj:country::STRING"))
+        
+        # Extract embedded data from parsed object
+        .withColumn("customer_segment", F.expr("embedded_obj:customerSegment::STRING"))
+        .withColumn("product_interest", F.expr("embedded_obj:productInterest::STRING"))
+        .withColumn("account_id", F.expr("embedded_obj:accountId::STRING"))
+        .withColumn("sales_rep_id", F.expr("embedded_obj:salesRepId::STRING"))
+        .withColumn("campaign_source", F.expr("embedded_obj:campaignSource::STRING"))
+        
+        # Extract key survey answers - after parsing answers_obj, nested objects are already VARIANT
+        # Access nested fields directly using colon notation
+        .withColumn("product_awareness_source", F.expr("answers_obj:productAwareness:selectedChoice::STRING"))
+        .withColumn("purchase_intent", F.expr("answers_obj:purchaseIntent:selectedChoice::STRING"))
+        .withColumn("purchase_intent_score", F.expr("answers_obj:purchaseIntent:selectedChoiceRecode::INT"))
+        .withColumn("nps_score", F.expr("answers_obj:npsScore:score::INT"))
+        .withColumn("nps_category", F.expr("answers_obj:npsScore:npsCategory::STRING"))
+        .withColumn("price_perception_score", F.expr("answers_obj:pricePerception:value::INT"))
+        .withColumn("competitor_comparison", F.expr("answers_obj:competitorComparison:selectedChoice::STRING"))
+        .withColumn("competitor_comparison_score", F.expr("answers_obj:competitorComparison:selectedChoiceRecode::INT"))
+        .withColumn("open_feedback", F.expr("answers_obj:openFeedback:textResponse::STRING"))
+        .withColumn("purchase_timeline", F.expr("answers_obj:purchaseTimeline:selectedChoice::STRING"))
+        .withColumn("follow_up_consent", F.expr("answers_obj:followUpConsent:consentGiven::BOOLEAN"))
+        
+        # Extract pre-calculated scores from parsed scoring object
+        .withColumn("calculated_sentiment_score", F.expr("scoring_obj:overallSentimentScore::DOUBLE"))
+        .withColumn("purchase_readiness_score", F.expr("scoring_obj:purchaseReadinessScore::INT"))
+        .withColumn("predicted_customer_segment", F.expr("scoring_obj:customerSegmentPredicted::STRING"))
+        
+        # Build AI prompt from survey responses
+        .withColumn("ai_sentiment_prompt", 
+            F.concat(
+                F.lit("Analyze the following customer survey response and classify the overall sentiment as one of: POSITIVE, NEUTRAL, or NEGATIVE. Respond with only the classification.\n\n"),
+                F.lit("Product Interest: "), F.coalesce(F.col("product_interest"), F.lit("Not specified")), F.lit("\n"),
+                F.lit("NPS Score: "), F.coalesce(F.col("nps_score").cast("string"), F.lit("N/A")), F.lit(" ("), F.coalesce(F.col("nps_category"), F.lit("Unknown")), F.lit(")\n"),
+                F.lit("Purchase Intent: "), F.coalesce(F.col("purchase_intent"), F.lit("Not specified")), F.lit("\n"),
+                F.lit("Competitor Comparison: "), F.coalesce(F.col("competitor_comparison"), F.lit("Not specified")), F.lit("\n"),
+                F.lit("Price Perception Score: "), F.coalesce(F.col("price_perception_score").cast("string"), F.lit("N/A")), F.lit("/100\n"),
+                F.lit("Purchase Timeline: "), F.coalesce(F.col("purchase_timeline"), F.lit("Not specified")), F.lit("\n"),
+                F.lit("Open Feedback: "), F.coalesce(F.col("open_feedback"), F.lit("No feedback provided")), F.lit("\n")
             )
-    )
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Silver Layer - Cleaned and Validated Quote Data
-
-# COMMAND ----------
-
-@dlt.table(
-    name="silver_automated_quotes",
-    comment="Cleaned and validated automated quote data with quality checks",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-@dlt.expect_or_fail("valid_quote_id", "id IS NOT NULL AND id != ''")
-@dlt.expect_or_fail("valid_customer_id", "customer_id IS NOT NULL AND customer_id != ''")
-@dlt.expect_or_fail("valid_product_id", "product_id IS NOT NULL AND product_id != ''")
-@dlt.expect_or_fail("valid_priority", "priority IN ('High', 'Medium', 'Low')")
-@dlt.expect_or_fail("valid_status", "status IN ('Pending', 'Approved', 'Denied', 'Delivered')")
-@dlt.expect_or_fail("valid_quantity", "quantity > 0")
-@dlt.expect_or_fail("valid_prices", "unit_price > 0 AND total_price > 0")
-@dlt.expect_or_fail("valid_lead_time", "lead_time > 0 AND lead_time <= 90")
-@dlt.expect("valid_customer_name", "customer_name IS NOT NULL AND customer_name != ''")
-@dlt.expect("valid_location", "location IS NOT NULL AND location != ''")
-@dlt.expect("valid_email_source", "email_source IS NOT NULL AND email_source != ''")
-def silver_automated_quotes():
-    """
-    Clean and validate automated quote data.
-    Apply business rules and data quality checks.
-    """
-    return (
-        dlt.read_stream("bronze_automated_quotes")
-        .filter(F.col("id").isNotNull())
-        .filter(F.col("customer_id").isNotNull())
-        .filter(F.col("product_id").isNotNull())
-        .filter(F.col("quantity") > 0)
-        .filter(F.col("unit_price") > 0)
-        .filter(F.col("lead_time").isNotNull())
-        .withColumn("processed_timestamp", F.current_timestamp())
-        .withColumn("priority_score", 
-            F.when(F.col("priority") == "High", 3)
-            .when(F.col("priority") == "Medium", 2)
-            .otherwise(1))
-        .withColumn("days_to_order", 
-            F.datediff(F.col("order_date"), F.current_date()))
-        .withColumn("processing_age_hours", 
-            F.round((F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.col("email_received_at"))) / 3600, 2))
-        .withColumn("is_urgent",
-            F.when((F.col("priority") == "High") & (F.col("days_to_order") <= 3), True)
-            .when((F.col("priority") == "Medium") & (F.col("days_to_order") <= 1), True)
-            .otherwise(False))
-        .withColumn("quote_value_tier",
-            F.when(F.col("total_price") >= 10000, "Large")
-            .when(F.col("total_price") >= 5000, "Medium")
-            .otherwise("Small"))
-        .withColumn("lead_time_category",
-            F.when(F.col("lead_time") <= 10, "Express")
-            .when(F.col("lead_time") <= 20, "Standard")
-            .otherwise("Extended"))
-        .withColumn("price_verification", 
-            F.when(F.abs(F.col("total_price") - (F.col("quantity") * F.col("unit_price"))) < 0.01, "Verified")
-            .otherwise("Error"))
-    )
-
-@dlt.table(
-    name="silver_quote_notes",
-    comment="Cleaned and validated quote notes with enrichments",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-@dlt.expect_or_fail("valid_note_id", "id IS NOT NULL")
-@dlt.expect_or_fail("valid_quote_ref", "quote_id IS NOT NULL AND quote_id != ''")
-@dlt.expect_or_fail("valid_note_type", "note_type IN ('Comment', 'Approval', 'Denial', 'Revision')")
-@dlt.expect("valid_content", "content IS NOT NULL AND length(content) > 0")
-@dlt.expect("valid_reviewer", "reviewer IS NOT NULL AND reviewer != ''")
-def silver_quote_notes():
-    """
-    Clean and validate quote notes data.
-    """
-    return (
-        dlt.read_stream("bronze_quote_notes")
-        .filter(F.col("quote_id").isNotNull())
-        .filter(F.col("content").isNotNull())
-        .withColumn("processed_timestamp", F.current_timestamp())
-        .withColumn("content_length", F.length(F.col("content")))
-        .withColumn("note_sentiment",
-            F.when(F.lower(F.col("content")).rlike("approv|accept|confirm|good"), "positive")
-            .when(F.lower(F.col("content")).rlike("den|reject|concern|issue|problem"), "negative")
-            .otherwise("neutral"))
-        .withColumn("contains_pricing", F.lower(F.col("content")).contains("price"))
-        .withColumn("contains_timeline", F.lower(F.col("content")).rlike("date|schedule|deadline|urgent"))
-    )
-
-@dlt.table(
-    name="silver_customers",
-    comment="Cleaned and validated customer data with enrichments",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-@dlt.expect_or_fail("valid_customer_id", "customer_id IS NOT NULL AND customer_id != ''")
-@dlt.expect_or_fail("valid_company_name", "company_name IS NOT NULL AND company_name != ''")
-@dlt.expect("valid_email", "email IS NOT NULL AND email RLIKE '^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'")
-@dlt.expect("valid_phone", "phone IS NOT NULL AND phone != ''")
-def silver_customers():
-    """
-    Clean and validate customer data.
-    """
-    return (
-        dlt.read_stream("bronze_customers")
-        .filter(F.col("customer_id").isNotNull())
-        .filter(F.col("company_name").isNotNull())
-        .withColumn("processed_timestamp", F.current_timestamp())
-        .withColumn("email_domain", F.split(F.col("email"), "@").getItem(1))
-        .withColumn("state", F.split(F.col("address"), ", ").getItem(1))
-        .withColumn("customer_tier",
-            F.when(F.lower(F.col("company_name")).contains("manufacturing"), "Industrial")
-            .when(F.lower(F.col("company_name")).contains("chemical"), "Process")
-            .when(F.lower(F.col("company_name")).contains("power"), "Utility")
-            .otherwise("Other"))
-        .withColumnRenamed("customer_created_at", "created_at")
-    )
-
-@dlt.table(
-    name="silver_products",
-    comment="Cleaned and validated product catalog data with enrichments",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-@dlt.expect_or_fail("valid_product_id", "product_id IS NOT NULL AND product_id != ''")
-@dlt.expect_or_fail("valid_product_name", "product_name IS NOT NULL AND product_name != ''")
-@dlt.expect_or_fail("valid_unit_price", "unit_price > 0")
-@dlt.expect("valid_category", "category IS NOT NULL AND category != ''")
-@dlt.expect("valid_availability", "availability_status IN ('Available', 'Limited', 'Backordered', 'Discontinued')")
-def silver_products():
-    """
-    Clean and validate product data.
-    """
-    return (
-        dlt.read_stream("bronze_products")
-        .filter(F.col("product_id").isNotNull())
-        .filter(F.col("product_name").isNotNull())
-        .filter(F.col("unit_price") > 0)
-        .withColumn("processed_timestamp", F.current_timestamp())
-        .withColumn("price_tier",
-            F.when(F.col("unit_price") >= 4000, "Premium")
-            .when(F.col("unit_price") >= 2000, "Standard")
-            .otherwise("Economy"))
-        .withColumn("product_type",
-            F.when(F.lower(F.col("product_name")).contains("coplanar"), "Pressure_Coplanar")
-            .when(F.lower(F.col("product_name")).contains("in-line"), "Pressure_Inline")
-            .when(F.lower(F.col("product_name")).contains("multivariable"), "Pressure_MultiVariable")
-            .when(F.lower(F.col("product_name")).contains("transmitter"), "Pressure_Instrument")
-            .otherwise("Other"))
-        .withColumn("description_length", F.length(F.col("description")))
-        .withColumnRenamed("product_created_at", "created_at")
-    )
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Gold Layer - Final Quote Management Tables (1:1 with Database Schema)
-
-# COMMAND ----------
-
-@dlt.table(
-    name="automated_quotes",
-    comment="Final automated quotes table matching database schema exactly",
-    table_properties={
-        "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-def automated_quotes():
-    """
-    Create final automated_quotes table that matches the database schema exactly.
-    This aggregates and finalizes quote data from silver layer.
-    """
-    return (
-        dlt.read("silver_automated_quotes")
-        .select(
-            F.col("id"),
-            F.col("customer_id"),
-            F.col("customer_name"),
-            F.col("location"),
-            F.col("product_id"),
-            F.col("product_description"),
-            F.col("quantity"),
-            F.col("unit_price").cast("decimal(10,2)"),
-            F.col("total_price").cast("decimal(10,2)"),
-            F.col("lead_time"),
-            F.col("order_date").cast("date"),
-            F.col("status"),
-            F.col("priority"),
-            F.col("email_source"),
-            F.col("email_subject"),
-            F.col("email_body"),
-            F.col("email_received_at").cast("timestamp"),
-            F.col("created_at").cast("timestamp"),
-            F.col("assigned_reviewer"),
-            F.col("updated_at").cast("timestamp"),
-            F.col("_bronze_ingestion_time")
         )
-        .filter(F.col("price_verification") == "Verified")  # Only include verified quotes
-    )
-
-@dlt.table(
-    name="quote_notes",
-    comment="Final quote notes table matching database schema exactly",
-    table_properties={
-        "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-def quote_notes():
-    """
-    Create final quote_notes table that matches the database schema exactly.
-    """
-    return (
-        dlt.read("silver_quote_notes")
-        .select(
-            F.col("quote_id"),
-            F.col("content"),
-            F.col("note_type"),
-            F.col("created_at").cast("timestamp"),
-            F.col("reviewer")
+        
+        # Use AI Query to derive sentiment classification
+        .withColumn("ai_derived_sentiment",
+            F.expr(f"""
+                ai_query(
+                    '{AI_MODEL_ENDPOINT}',
+                    ai_sentiment_prompt
+                )
+            """)
         )
-        .filter(F.col("content_length") > 5)  # Only include meaningful notes
-    )
-
-@dlt.table(
-    name="customers",
-    comment="Final customers table matching database schema exactly",
-    table_properties={
-        "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-def customers():
-    """
-    Create final customers table that matches the database schema exactly.
-    This deduplicates and finalizes customer data from silver layer.
-    """
-    return (
-        dlt.read("silver_customers")
-        .select(
-            F.col("customer_id"),
-            F.col("company_name"),
-            F.col("contact_person"),
-            F.col("email"),
-            F.col("phone"),
-            F.col("address"),
-            F.col("created_at").cast("timestamp"),
-            # Include computed columns for analytics
-            F.col("email_domain"),
-            F.col("customer_tier")
-        )  # Ensure unique customers
-    )
-
-@dlt.table(
-    name="products",
-    comment="Final products table matching database schema exactly",
-    table_properties={
-        "quality": "gold",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-def products():
-    """
-    Create final products table that matches the database schema exactly.
-    This deduplicates and finalizes product catalog data from silver layer.
-    """
-    return (
-        dlt.read("silver_products")
-        .select(
-            F.col("product_id"),
-            F.col("product_name"),
-            F.col("description"),
-            F.col("category"),
-            F.col("unit_price").cast("decimal(10,2)"),
-            F.col("availability_status"),
-            F.col("created_at").cast("timestamp"),
-            # Include computed columns for analytics
-            F.col("price_tier"),
-            F.col("product_type")
-        ) # Ensure unique products
-    )
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Views for Quote Management Analytics
-
-# COMMAND ----------
-
-@dlt.table(
-    name="quote_dashboard_view",
-    comment="Real-time dashboard view for quote management and approval workflow"
-)
-def quote_dashboard_view():
-    """
-    Create a consolidated view for quote management dashboard consumption.
-    """
-    quotes_with_notes = (
-        dlt.read("automated_quotes").alias("aq")
-        .join(
-            dlt.read("quote_notes").alias("qn")
-            .groupBy("quote_id")
-            .agg(
-                F.count("*").alias("note_count"),
-                F.max("created_at").alias("last_note_date"),
-                F.sum(F.when(F.col("note_type") == "Approval", 1).otherwise(0)).alias("approval_count"),
-                F.sum(F.when(F.col("note_type") == "Denial", 1).otherwise(0)).alias("denial_count")
-            ).alias("notes_agg"),
-            F.col("aq.id") == F.col("notes_agg.quote_id"),
-            "left"
-        )
+        
+        # Add processing metadata
+        .withColumn("processed_at", F.current_timestamp())
     )
     
-    return (
-        quotes_with_notes
-        .filter(F.col("aq.created_at") >= F.current_date() - 30)  # Last 30 days
-        .select(
-            F.col("aq.id"),
-            F.col("aq.customer_name"),
-            F.col("aq.product_id"),
-            F.col("aq.total_price"),
-            F.col("aq.status"),
-            F.col("aq.priority"),
-            F.col("aq.assigned_reviewer"),
-            F.datediff(F.current_date(), F.col("aq.order_date")).alias("days_to_order"),
-            F.round((F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.col("aq.email_received_at"))) / 3600, 1).alias("processing_hours"),
-            F.coalesce("notes_agg.note_count", F.lit(0)).alias("total_notes"),
-            F.coalesce("notes_agg.approval_count", F.lit(0)).alias("approvals"),
-            F.coalesce("notes_agg.denial_count", F.lit(0)).alias("denials"),
-            F.col("aq.created_at"),
-            F.col("aq.order_date")
+    # Select final columns (exclude raw payload, intermediate columns, and prompt)
+    return df.select(
+            "response_id",
+            "survey_id",
+            "response_status",
+            "distribution_channel",
+            "survey_start_date",
+            "survey_end_date",
+            "recorded_date",
+            "duration_seconds",
+            "external_customer_id",
+            "respondent_email",
+            "respondent_first_name",
+            "respondent_last_name",
+            "respondent_city",
+            "respondent_state",
+            "respondent_country",
+            "customer_segment",
+            "product_interest",
+            "account_id",
+            "sales_rep_id",
+            "campaign_source",
+            "product_awareness_source",
+            "purchase_intent",
+            "purchase_intent_score",
+            "nps_score",
+            "nps_category",
+            "price_perception_score",
+            "competitor_comparison",
+            "competitor_comparison_score",
+            "open_feedback",
+            "purchase_timeline",
+            "follow_up_consent",
+            "calculated_sentiment_score",
+            "purchase_readiness_score",
+            "predicted_customer_segment",
+            "ai_sentiment_prompt",
+            "ai_derived_sentiment",
+            "processed_at"
         )
-        .orderBy(F.desc("aq.created_at"), "aq.priority", "aq.total_price")
-    )
-
-@dlt.table(
-    name="product_performance_view", 
-    comment="Product sales performance and quote conversion analysis"
-)
-def product_performance_view():
-    """
-    Product performance analysis for sales and inventory planning.
-    """
-    return (
-        dlt.read("automated_quotes").alias("aq")
-        .join(dlt.read("products").alias("p"), F.col("aq.product_id") == F.col("p.product_id"), "left")
-        .groupBy(
-            F.col("aq.product_id"),
-            F.col("p.product_name"),
-            F.col("p.category"),
-            F.date_trunc("month", F.col("aq.created_at")).alias("month")
-        )
-        .agg(
-            F.count("*").alias("total_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Approved", 1).otherwise(0)).alias("approved_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Denied", 1).otherwise(0)).alias("denied_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Pending", 1).otherwise(0)).alias("pending_quotes"),
-            F.sum("aq.quantity").alias("total_quantity_quoted"),
-            F.sum(F.when(F.col("aq.status") == "Approved", F.col("aq.total_price")).otherwise(0)).alias("approved_revenue"),
-            F.sum("aq.total_price").alias("total_quoted_value"),
-            F.avg("aq.total_price").alias("avg_quote_value")
-        )
-        .withColumn("approval_rate",
-            F.round(F.col("approved_quotes") / F.col("total_quotes") * 100, 2))
-        .filter(F.col("month") >= F.add_months(F.current_date(), -6))  # Last 6 months
-        .orderBy(F.desc("total_quoted_value"), F.desc("approval_rate"))
-    )
-
-@dlt.table(
-    name="customer_analytics_view",
-    comment="Customer quote patterns and relationship analysis"
-)
-def customer_analytics_view():
-    """
-    Customer analytics for account management and sales forecasting.
-    """
-    customer_quotes = (
-        dlt.read("automated_quotes").alias("aq")
-        .join(dlt.read("customers").alias("c"), F.col("aq.customer_id") == F.col("c.customer_id"), "left")
-        .groupBy(
-            F.col("aq.customer_id"),
-            F.col("c.company_name"),
-            F.col("c.customer_tier"),
-            F.col("c.email_domain")
-        )
-        .agg(
-            F.count("*").alias("total_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Approved", 1).otherwise(0)).alias("approved_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Approved", F.col("aq.total_price")).otherwise(0)).alias("total_revenue"),
-            F.sum("aq.total_price").alias("total_quoted_value"),
-            F.avg("aq.total_price").alias("avg_quote_value"),
-            F.min("aq.created_at").alias("first_quote_date"),
-            F.max("aq.created_at").alias("last_quote_date"),
-            F.countDistinct("aq.product_id").alias("unique_products_quoted")
-        )
-        .withColumn("approval_rate",
-            F.round(F.col("approved_quotes") / F.col("total_quotes") * 100, 2))
-        .withColumn("days_as_customer",
-            F.datediff(F.col("last_quote_date"), F.col("first_quote_date")))
-    )
-    
-    return (
-        customer_quotes
-        .filter(F.col("total_quotes") >= 1)
-        .select(
-            "customer_id",
-            "company_name", 
-            "customer_tier",
-            "total_quotes",
-            "approved_quotes",
-            F.round("total_revenue", 2).alias("total_revenue"),
-            F.round("avg_quote_value", 2).alias("avg_quote_value"),
-            F.round("approval_rate", 1).alias("approval_rate_pct"),
-            "unique_products_quoted",
-            "days_as_customer",
-            "first_quote_date",
-            "last_quote_date"
-        )
-        .orderBy(F.desc("total_revenue"), F.desc("approval_rate_pct"))
-    )
-
-@dlt.table(
-    name="reviewer_performance_view",
-    comment="Quote reviewer performance and workload analysis"
-)
-def reviewer_performance_view():
-    """
-    Reviewer performance analysis for workflow optimization.
-    """
-    return (
-        dlt.read("automated_quotes").alias("aq")
-        .groupBy(
-            F.col("aq.assigned_reviewer"),
-            F.date_trunc("week", F.col("aq.created_at")).alias("week")
-        )
-        .agg(
-            F.count("*").alias("total_quotes_assigned"),
-            F.sum(F.when(F.col("aq.status") == "Approved", 1).otherwise(0)).alias("approved_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Denied", 1).otherwise(0)).alias("denied_quotes"),
-            F.sum(F.when(F.col("aq.status") == "Pending", 1).otherwise(0)).alias("pending_quotes"),
-            F.sum(F.when(F.col("aq.priority") == "High", 1).otherwise(0)).alias("high_priority_quotes"),
-            F.avg(F.datediff(F.current_date(), F.col("aq.created_at"))).alias("avg_quote_age_days"),
-            F.sum("aq.total_price").alias("total_value_reviewed")
-        )
-        .withColumn("approval_rate",
-            F.round(F.col("approved_quotes") / (F.col("approved_quotes") + F.col("denied_quotes")) * 100, 2))
-        .withColumn("processing_efficiency",
-            F.round((F.col("approved_quotes") + F.col("denied_quotes")) / F.col("total_quotes_assigned") * 100, 2))
-        .filter(F.col("week") >= F.date_trunc("week", F.current_date()) - F.expr("INTERVAL 8 WEEKS"))
-        .orderBy(F.desc("week"), "assigned_reviewer")
-    )

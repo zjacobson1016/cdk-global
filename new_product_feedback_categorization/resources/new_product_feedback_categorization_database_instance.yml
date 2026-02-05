@@ -5,6 +5,7 @@ resources:
     new_product_feedback_categorization_instance:
       name: ${var.database_instance_name}
       capacity: CU_1
+      budget_policy_id: ${var.budget_policy_id}
       
   # Database catalog in the Lakebase instance
   database_catalogs:
