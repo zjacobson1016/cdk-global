@@ -1,0 +1,43 @@
+# Model Serving Endpoint resource for {{.project_name}}
+# Reference: https://docs.databricks.com/api/workspace/servingendpoints/create
+resources:
+  model_serving_endpoints:
+    {{.project_name}}_serving_endpoint:
+      name: {{.project_name}}-serving-endpoint
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      
+      config:
+        served_entities:
+          - name: {{.project_name}}_model_v1
+            entity_name: "${var.catalog}.${var.schema}.${var.model_name}"
+            entity_version: "1"
+            
+            # Workload size - can be Small, Medium, or Large
+            workload_size: "Small"
+            
+            # Scale to zero settings
+            scale_to_zero_enabled: true
+            
+            # Workload type
+            workload_type: "CPU"
+            
+            # Environment variables
+            environment_vars:
+              CATALOG: "${var.catalog}"
+              SCHEMA: "${var.schema}"
+        
+        # Auto capture configuration for monitoring
+        auto_capture_config:
+          catalog_name: "${var.catalog}"
+          schema_name: "${var.schema}"
+          table_name_prefix: "{{.project_name}}_endpoint"
+          enabled: true
+      
+      # Tags
+      tags:
+        - key: "project"
+          value: "{{.project_name}}"
+        - key: "environment"
+          value: "${bundle.target}"

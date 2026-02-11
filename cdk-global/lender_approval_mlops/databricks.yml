@@ -1,0 +1,38 @@
+# Databricks Asset Bundle - Lender Approval MLOps
+# Synthetic data → UC Volume → SDP (bronze/silver/gold) → ML training & batch inference
+
+bundle:
+  name: lender_approval_mlops
+
+include:
+  - resources/lender_approval_mlops_pipeline.yml
+  - resources/lender_approval_mlops_job.yml
+
+scripts:
+  generate_lender_data:
+    content: python src/notebooks/01_generate_lender_data.py
+variables:
+  catalog:
+    description: "Unity Catalog catalog for tables and volume"
+    default: "mfg_mc_se_sa"
+  schema:
+    description: "Schema for pipeline tables and raw_data volume"
+    default: "cdk"
+  warehouse_id:
+    description: "SQL Warehouse ID for jobs"
+    default: "bce0a02b2be86f1b"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com
+
+
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com
+      root_path: /Shared/.bundle/prod/${bundle.name}
+  

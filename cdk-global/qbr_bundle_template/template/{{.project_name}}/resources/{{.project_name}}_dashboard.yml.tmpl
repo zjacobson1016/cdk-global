@@ -1,0 +1,18 @@
+# Lakeview Dashboard resource for {{.project_name}}
+# Reference: https://docs.databricks.com/api/workspace/lakeview/create
+resources:
+  dashboards:
+    {{.project_name}}_dashboard:
+      display_name: "{{.project_name}} Dashboard"
+      warehouse_id: "${var.warehouse_id}"
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.schema}
+      
+      # Dashboard file path (LVDASH format)
+      file_path: ../src/dashboard.lvdash.json
+      
+      # Embed credentials for scheduled updates
+      embed_credentials: true
+      
+      # Parent path in workspace
+      parent_path: "${workspace.file_path}/dashboards"

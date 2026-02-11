@@ -1,0 +1,79 @@
+{
+  "welcome_message": "\n🚀 Welcome to the QBR Demo Bundle Template!\n\nThis template creates a complete Databricks Asset Bundle with:\n  • DLT Pipeline (Bronze/Silver/Gold medallion architecture)\n  • Model Serving Endpoint\n  • Lakeview Dashboard\n  • Databricks App\n  • Quality Monitors\n  • Lakebase Database Instance\n\n",
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "default": "my_demo",
+      "description": "Project name (used for resource naming)",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "pattern_match_failure_message": "Project name must start with a letter and contain only lowercase letters, numbers, and underscores"
+    },
+    "catalog": {
+      "type": "string",
+      "default": "main",
+      "description": "Unity Catalog name for data assets"
+    },
+    "schema": {
+      "type": "string",
+      "default": "{{.project_name}}",
+      "description": "Schema name within the catalog"
+    },
+    "workspace_host": {
+      "type": "string",
+      "default": "https://your-workspace.cloud.databricks.com",
+      "description": "Databricks workspace URL (e.g., https://my-workspace.cloud.databricks.com)"
+    },
+    "warehouse_id": {
+      "type": "string",
+      "default": "your_warehouse_id",
+      "description": "SQL Warehouse ID for dashboards and apps"
+    },
+    "include_dlt_pipeline": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "yes",
+      "description": "Include DLT Pipeline for data ingestion?"
+    },
+    "include_model_serving": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "yes",
+      "description": "Include Model Serving Endpoint?"
+    },
+    "include_dashboard": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "yes",
+      "description": "Include Lakeview Dashboard?"
+    },
+    "include_app": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "yes",
+      "description": "Include Databricks App?"
+    },
+    "include_quality_monitors": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "yes",
+      "description": "Include Quality Monitors?"
+    },
+    "include_lakebase": {
+      "type": "string",
+      "enum": ["yes", "no"],
+      "default": "no",
+      "description": "Include Lakebase Database Instance?"
+    },
+    "owner_email": {
+      "type": "string",
+      "default": "your.email@company.com",
+      "description": "Email address for notifications and run_as in production"
+    },
+    "budget_policy_id": {
+      "type": "string",
+      "default": "",
+      "description": "Budget policy ID for cost attribution (optional)"
+    }
+  },
+  "success_message": "\n✅ Bundle created successfully!\n\nNext steps:\n  1. cd {{.project_name}}\n  2. Review and customize the generated files\n  3. Run 'databricks bundle validate' to check configuration\n  4. Run 'databricks bundle deploy -t dev' to deploy\n\n"
+}

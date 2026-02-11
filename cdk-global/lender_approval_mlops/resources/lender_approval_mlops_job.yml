@@ -1,0 +1,142 @@
+# Job 1: Initial setup — run once to bootstrap the project, then never again
+# Job 2: Retraining & deployment — triggered on drift, retrains and deploys
+#         Deployment_job_trigger uses the job created by 03a_create_deployment_job (looked up by name at runtime)
+resources:
+  jobs:
+    lender_approval_mlops:
+      name: "[${bundle.target}] lender_approval - MLOps End-to-End"
+      tags:
+        project: "lender_approval_mlops"
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies:
+              ["-r /Workspace/Users/zach.jacobson@databricks.com/.bundle/lender_approval_mlops/dev/files/src/requirements.txt"]
+      tasks:
+        - task_key: setup
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/_setup_lender.py
+            source: WORKSPACE
+       
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: setup
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.lender_approval_mlops_pipeline.id}
+            full_refresh: false
+        - task_key: feature_engineering
+          depends_on:
+            - task_key: run_pipeline
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/01_feature_engineering.py
+            source: WORKSPACE
+        - task_key: train
+          depends_on:
+            - task_key: feature_engineering
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/02_model_training_hpo_optuna.py
+            source: WORKSPACE
+        - task_key: adv_register_model
+          depends_on:
+            - task_key: train
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/03a_create_deployment_job.py
+            source: WORKSPACE
+        - task_key: register_challenger
+          depends_on:
+            - task_key: adv_register_model
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/03b_from_notebook_to_models_in_uc.py
+            source: WORKSPACE
+        - task_key: challenger_validation
+          depends_on:
+            - task_key: register_challenger
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/04a_challenger_validation.py
+            source: WORKSPACE
+        - task_key: challenger_approval
+          depends_on:
+            - task_key: challenger_validation
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/04b_challenger_approval.py
+            source: WORKSPACE
+        - task_key: batch_inference
+          depends_on:
+            - task_key: challenger_approval
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/05_batch_inference.py
+            source: WORKSPACE
+        - task_key: monitoring
+          depends_on:
+            - task_key: batch_inference
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/07_model_monitoring.py
+            source: WORKSPACE
+        - task_key: drift_detection
+          depends_on:
+            - task_key: monitoring
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/08_drift_detection.py
+            source: WORKSPACE
+
+    Advanced_MLOPS_Retraining_and_Deployment:
+      name: Advanced MLOPS - Retraining and Deployment
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies:
+              ["-r /Workspace/Users/zach.jacobson@databricks.com/.bundle/lender_approval_mlops/dev/files/src/requirements.txt"]
+      tasks:
+        - task_key: Get_deployment_job_id
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/get_deployment_job_id.py
+            source: WORKSPACE
+        - task_key: Drift_detection
+          environment_key: default
+          notebook_task:
+            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/08_drift_detection
+            source: WORKSPACE
+        - task_key: Check_Violations
+          depends_on:
+            - task_key: Drift_detection
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.Drift_detection.values.all_violations_count}}"
+            right: "0"
+        - task_key: Model_training
+          depends_on:
+            - task_key: Check_Violations
+              outcome: "true"
+          environment_key: default
+          notebook_task:
+            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/02_model_training_hpo_optuna
+            source: WORKSPACE
+        - task_key: Register_model
+          depends_on:
+            - task_key: Model_training
+          environment_key: default
+          notebook_task:
+            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/03b_from_notebook_to_models_in_uc
+            source: WORKSPACE
+        # - task_key: Deployment_job_trigger
+        #   depends_on:
+        #     - task_key: Register_model
+        #     - task_key: Get_deployment_job_id
+          #run_job_task:
+            #job_id: "{{tasks.Get_deployment_job_id.values.deployment_job_id}}"
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED

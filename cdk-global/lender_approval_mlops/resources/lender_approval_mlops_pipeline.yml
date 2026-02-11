@@ -1,0 +1,24 @@
+# Spark Declarative Pipeline (SDP): bronze → silver → gold for lender approval features
+resources:
+  pipelines:
+    lender_approval_mlops_pipeline:
+      name: "[${bundle.target}] lender_approval_mlops_etl"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      serverless: true
+      development: true
+      continuous: false
+      photon: true
+      channel: current
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+      libraries:
+        - glob:
+            include: ../src/pipelines/lender_approval_etl/transformations/**
+      root_path: ../src/pipelines/lender_approval_etl
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
+        - level: CAN_RUN
+          group_name: "users"

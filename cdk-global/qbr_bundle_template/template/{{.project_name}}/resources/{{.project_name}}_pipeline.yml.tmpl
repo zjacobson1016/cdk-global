@@ -1,0 +1,44 @@
+# DLT Pipeline for {{.project_name}}
+resources:
+  pipelines:
+    {{.project_name}}_pipeline:
+      name: {{.project_name}}_pipeline
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      
+      # Pipeline configuration
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+
+      # Pipeline libraries (notebooks or Python files)
+      libraries:
+        - notebook:
+            path: ../src/dlt_pipeline.py
+            
+      # Target catalog and schema
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      
+      # Development configuration
+      development: false
+      
+      # Pipeline mode - can be TRIGGERED or CONTINUOUS
+      continuous: false
+      
+      # Photon acceleration
+      photon: true
+      
+      # Serverless compute
+      serverless: true
+      
+      # Channel for DBR version
+      channel: current
+          
+      # Edition - CORE, PRO, or ADVANCED
+      edition: ADVANCED
+      
+      # Tags
+      tags:
+        project: "{{.project_name}}"
