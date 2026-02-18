@@ -11,6 +11,8 @@ include:
 scripts:
   generate_lender_data:
     content: python src/notebooks/01_generate_lender_data.py
+  generate_supporting_docs:
+    content: python src/notebooks/01_generate_lender_data_pdf.py --count 100 --profile group-demo
 variables:
   catalog:
     description: "Unity Catalog catalog for tables and volume"

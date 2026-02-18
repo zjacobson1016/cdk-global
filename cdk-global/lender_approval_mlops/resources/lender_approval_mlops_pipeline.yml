@@ -9,7 +9,7 @@ resources:
       development: true
       continuous: false
       photon: true
-      channel: current
+      channel: preview
       configuration:
         catalog: ${var.catalog}
         schema: ${var.schema}

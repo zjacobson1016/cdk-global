@@ -31,6 +31,7 @@
 import os
 
 current_directory = os.getcwd()
+print(f"Current directory: {current_directory}")
 
 # COMMAND ----------
 
@@ -53,14 +54,24 @@ deployment_notebook_path = f"{current_directory}/06_serve_features_and_model"
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service import jobs
+from databricks.sdk.service.compute import Environment
 
+# Serverless environment — install deps from requirements.txt via pip -r
+requirements_ws_path = f"{current_directory}/../requirements.txt"
+
+serverless_env = jobs.JobEnvironment(
+    environment_key="default",
+    spec=Environment(client="4", dependencies=[f"-r {requirements_ws_path}"]),
+)
 
 job_settings = jobs.JobSettings(
     name=job_name,
+    environments=[serverless_env],
     tasks=[
         jobs.Task(
             task_key="Evaluation",
             notebook_task=jobs.NotebookTask(notebook_path=evaluation_notebook_path),
+            environment_key="default",
             max_retries=0,
         ),
         jobs.Task(
@@ -70,6 +81,7 @@ job_settings = jobs.JobSettings(
                 base_parameters={"approval_tag_name": "{{task.name}}"},
             ),
             depends_on=[jobs.TaskDependency(task_key="Evaluation")],
+            environment_key="default",
             max_retries=0,
         ),
         jobs.Task(
@@ -79,6 +91,7 @@ job_settings = jobs.JobSettings(
                 base_parameters={"smoke_test": "False"},
             ),
             depends_on=[jobs.TaskDependency(task_key="Approval_Check")],
+            environment_key="default",
             max_retries=0,
         ),
     ],

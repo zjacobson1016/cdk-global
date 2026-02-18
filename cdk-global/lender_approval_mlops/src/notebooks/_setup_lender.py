@@ -36,7 +36,7 @@ label_col = "approved"
 pos_label = 1  # binary: 1 = approved
 
 # Serving & monitoring (notebooks 06, 07, 08)
-online_store_name = f"lender_approval_online_{schema}"[:64]  # name length limit
+online_store_name = f"lender-approval-online-{schema}"[:64]  # name length limit
 online_feature_table_name = "lender_approval_feature_online_table"
 endpoint_name = f"lender_approval_serving_{schema}"[:50]    # endpoint name length limit
 inference_table_name = "lender_approval_inference_table"    # unified table for monitoring (offline + labels)

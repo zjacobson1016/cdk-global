@@ -36,10 +36,20 @@ w = WorkspaceClient()
 
 spark.sql(f"""
   CREATE OR REPLACE TABLE {catalog}.{db}.{inference_table_name} AS
-  SELECT i.*, l.approved AS label_approved
+  SELECT
+    i.application_id,
+    i.transaction_ts,
+    CAST(i.prediction AS LONG) AS prediction,
+    i.income_check,
+    i.id_check,
+    i.decision_reason,
+    i.model_version,
+    i.inference_timestamp,
+    CAST(l.approved AS LONG) AS label_approved
   FROM {catalog}.{db}.{offline_inference_table_name} i
   LEFT JOIN {catalog}.{db}.{label_table_name} l
-    ON i.application_id = l.application_id AND i.transaction_ts = l.transaction_ts
+    ON i.application_id = l.application_id
+       AND (i.transaction_ts = l.transaction_ts OR i.transaction_ts IS NULL)
   ORDER BY i.inference_timestamp
 """)
 spark.sql(f"ALTER TABLE {catalog}.{db}.{inference_table_name} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
@@ -53,10 +63,11 @@ spark.sql(f"ALTER TABLE {catalog}.{db}.{inference_table_name} SET TBLPROPERTIES 
 
 spark.sql(f"""
   CREATE OR REPLACE TABLE {catalog}.{db}.{baseline_table_name} AS
-  SELECT i.prediction, i.model_version, i.inference_timestamp, l.approved AS label_approved
+  SELECT CAST(i.prediction AS LONG) AS prediction, i.model_version, i.inference_timestamp, CAST(l.approved AS LONG) AS label_approved
   FROM {catalog}.{db}.{offline_inference_table_name} i
   LEFT JOIN {catalog}.{db}.{label_table_name} l
-    ON i.application_id = l.application_id AND i.transaction_ts = l.transaction_ts
+    ON i.application_id = l.application_id
+       AND (i.transaction_ts = l.transaction_ts OR i.transaction_ts IS NULL)
   WHERE l.split = 'test'
   LIMIT 1000
 """)

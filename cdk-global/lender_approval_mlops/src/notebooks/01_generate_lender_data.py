@@ -53,9 +53,9 @@ APPLICATION_SCHEMA = StructType([
     StructField("approved", IntegerType(), False),
 ])
 
-# Loan purpose distribution (weighted)
-LOAN_PURPOSES = ["purchase", "refinance", "home_improvement", "debt_consolidation", "other"]
-LOAN_PURPOSE_WEIGHTS = [0.45, 0.25, 0.12, 0.13, 0.05]
+# Loan purpose distribution (weighted) – auto/car lending
+LOAN_PURPOSES = ["new_car_purchase", "used_car_purchase", "auto_refinance", "auto_lease_buyout", "car_repair"]
+LOAN_PURPOSE_WEIGHTS = [0.35, 0.30, 0.18, 0.10, 0.07]
 
 # Date range: last 6 months
 END_DATE = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)

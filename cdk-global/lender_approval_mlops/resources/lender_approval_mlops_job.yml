@@ -10,9 +10,10 @@ resources:
       environments:
         - environment_key: default
           spec:
-            client: "1"
+            client: "4"
             dependencies:
               ["-r /Workspace/Users/zach.jacobson@databricks.com/.bundle/lender_approval_mlops/dev/files/src/requirements.txt"]
+
       tasks:
         - task_key: setup
           environment_key: default
@@ -90,47 +91,73 @@ resources:
             notebook_path: ../src/notebooks/08_drift_detection.py
             source: WORKSPACE
 
-    Advanced_MLOPS_Retraining_and_Deployment:
-      name: Advanced MLOPS - Retraining and Deployment
-      environments:
-        - environment_key: default
-          spec:
-            client: "1"
-            dependencies:
-              ["-r /Workspace/Users/zach.jacobson@databricks.com/.bundle/lender_approval_mlops/dev/files/src/requirements.txt"]
-      tasks:
-        - task_key: Get_deployment_job_id
-          environment_key: default
-          notebook_task:
-            notebook_path: ../src/notebooks/get_deployment_job_id.py
-            source: WORKSPACE
-        - task_key: Drift_detection
-          environment_key: default
-          notebook_task:
-            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/08_drift_detection
-            source: WORKSPACE
-        - task_key: Check_Violations
+        - task_key: generate_lender_programs
           depends_on:
-            - task_key: Drift_detection
-          condition_task:
-            op: GREATER_THAN
-            left: "{{tasks.Drift_detection.values.all_violations_count}}"
-            right: "0"
-        - task_key: Model_training
-          depends_on:
-            - task_key: Check_Violations
-              outcome: "true"
+            - task_key: setup
           environment_key: default
           notebook_task:
-            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/02_model_training_hpo_optuna
+            notebook_path: ../src/notebooks/09a_generate_lender_programs.py
             source: WORKSPACE
-        - task_key: Register_model
+
+        - task_key: create_metric_view
           depends_on:
-            - task_key: Model_training
+            - task_key: generate_lender_programs
+            - task_key: run_pipeline
           environment_key: default
           notebook_task:
-            notebook_path: /Workspace/Users/zach.jacobson@databricks.com/mlops-end2end/02-mlops-advanced/03b_from_notebook_to_models_in_uc
+            notebook_path: ../src/notebooks/09b_create_metric_view.py
             source: WORKSPACE
+
+        - task_key: setup_agent_bricks
+          depends_on:
+            - task_key: create_metric_view
+            - task_key: batch_inference
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/notebooks/09c_setup_agent_bricks.py
+            source: WORKSPACE
+
+    # Advanced_MLOPS_Retraining_and_Deployment:
+    #   name: "[${bundle.target}] lender_approval - retraining and deployment"
+    #   environments:
+    #     - environment_key: default
+    #       spec:
+    #         client: "4"
+    #         dependencies:
+    #           ["-r /Workspace/Users/zach.jacobson@databricks.com/.bundle/lender_approval_mlops/dev/files/src/requirements.txt"]
+    #   tasks:
+    #     - task_key: Get_deployment_job_id
+    #       environment_key: default
+    #       notebook_task:
+    #         notebook_path: ../src/notebooks/get_deployment_job_id.py
+    #         source: WORKSPACE
+    #     - task_key: Drift_detection
+    #       environment_key: default
+    #       notebook_task:
+    #         notebook_path: ../src/notebooks/08_drift_detection.py
+    #         source: WORKSPACE
+    #     - task_key: Check_Violations
+    #       depends_on:
+    #         - task_key: Drift_detection
+    #       condition_task:
+    #         op: GREATER_THAN
+    #         left: "{{tasks.Drift_detection.values.all_violations_count}}"
+    #         right: "0"
+    #     - task_key: Model_training
+    #       depends_on:
+    #         - task_key: Check_Violations
+    #           outcome: "true"
+    #       environment_key: default
+    #       notebook_task:
+    #         notebook_path: ../src/notebooks/02_model_training_hpo_optuna.py
+    #         source: WORKSPACE
+    #     - task_key: Register_model
+    #       depends_on:
+    #         - task_key: Model_training
+    #       environment_key: default
+    #       notebook_task:
+    #         notebook_path: ../src/notebooks/03b_from_notebook_to_models_in_uc.py
+    #         source: WORKSPACE
         # - task_key: Deployment_job_trigger
         #   depends_on:
         #     - task_key: Register_model

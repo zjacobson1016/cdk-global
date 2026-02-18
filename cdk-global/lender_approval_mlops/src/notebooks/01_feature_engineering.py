@@ -12,9 +12,6 @@ dbutils.widgets.text("schema", "cdk", "Schema")
 
 # MAGIC %run ./_setup_lender
 
-# COMMAND ----------
-
-# MAGIC %run ./_setup_lender
 
 # COMMAND ----------
 
@@ -77,12 +74,46 @@ spark.sql(f"""
   $$
 """)
 
+# On-demand feature function: income validation (pay stub vs self-reported)
+# Returns 1 if verified income is within 70-150% of reported, 0 if mismatch, -1 if missing doc
+spark.sql(f"""
+  CREATE OR REPLACE FUNCTION {catalog}.{schema}.income_validation(income_in DOUBLE, verified_period_income_in DOUBLE)
+  RETURNS INT
+  LANGUAGE PYTHON
+  COMMENT "Validates self-reported income against pay-stub verified income. 1=pass, 0=fail, -1=missing"
+  AS $$
+  if income_in is None or income_in <= 0 or verified_period_income_in is None:
+    return -1
+  verified_annual = verified_period_income_in * 26
+  ratio = verified_annual / income_in
+  return 1 if 0.7 <= ratio <= 1.5 else 0
+  $$
+""")
+
+# On-demand feature function: ID expiration check
+# Returns 1 if photo ID is not expired, 0 if expired, -1 if missing doc
+spark.sql(f"""
+  CREATE OR REPLACE FUNCTION {catalog}.{schema}.id_expiration_check(id_expiration_date_in DATE)
+  RETURNS INT
+  LANGUAGE PYTHON
+  COMMENT "Checks if photo ID is not expired. 1=valid, 0=expired, -1=missing"
+  AS $$
+  from datetime import date
+  if id_expiration_date_in is None:
+    return -1
+  try:
+    return 1 if id_expiration_date_in >= date.today() else 0
+  except (ValueError, TypeError):
+    return -1
+  $$
+""")
+
 # COMMAND ----------
 
 # Table of application IDs to score (for batch inference). Use test split IDs.
 app_ids_df = spark.table(f"{catalog}.{schema}.{label_table_name}") \
     .filter("split = 'test'") \
-    .select("application_id", "transaction_ts")
+    .select("application_id", "transaction_ts", "split")
 app_ids_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{catalog}.{schema}.{app_ids_table_name}"
 )

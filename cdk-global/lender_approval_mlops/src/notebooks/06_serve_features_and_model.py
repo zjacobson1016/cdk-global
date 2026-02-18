@@ -137,14 +137,32 @@ if not is_smoke_test:
 
 # MAGIC %md
 # MAGIC ## Test endpoint (example payload: application_id + transaction_ts for feature lookup)
+# MAGIC The pyfunc wrapper returns structured JSON with the ML prediction,
+# MAGIC deterministic rule checks, and a human-readable `decision_reason`.
 
 # COMMAND ----------
 
-# Example: get one row from app_ids for payload
-sample = spark.table(f"{catalog}.{db}.{app_ids_table_name}").limit(2).toPandas()
+import json
+
+# Example: get rows from app_ids for payload
+sample = spark.table(f"{catalog}.{db}.{app_ids_table_name}").limit(3).toPandas()
 dataframe_records = sample.to_dict(orient="records") if len(sample) > 0 else [
-    {"application_id": "APP-000001", "transaction_ts": "2025-02-01 00:00:00"},
+    {"application_id": "APP-000001"},
 ]
 print("Querying endpoint with:", dataframe_records)
 response = w.serving_endpoints.query(name=endpoint_name, dataframe_records=dataframe_records)
-print("Predictions:", response.predictions)
+
+# Pretty-print each prediction with reasoning
+for i, pred in enumerate(response.predictions):
+    print(f"\n{'='*60}")
+    print(f"  Application:     {dataframe_records[i].get('application_id', 'N/A')}")
+    if isinstance(pred, dict):
+        print(f"  Final Decision:  {'APPROVED' if pred.get('prediction') == 1 else 'DENIED'}")
+        print(f"  ML Prediction:   {'APPROVED' if pred.get('ml_prediction') == 1 else 'DENIED'}")
+        print(f"  ML Probability:  {pred.get('ml_probability')}")
+        print(f"  Income Check:    {pred.get('income_check')}")
+        print(f"  ID Check:        {pred.get('id_check')}")
+        print(f"  Reason:          {pred.get('decision_reason')}")
+    else:
+        print(f"  Prediction: {pred}")
+print(f"\n{'='*60}")
