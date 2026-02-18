@@ -1,0 +1,35 @@
+# Lakebase Database Instance resources for {{.project_name}}
+resources:
+  # Database instance
+  database_instances:
+    {{.project_name}}_instance:
+      name: ${var.database_instance_name}
+      capacity: CU_1
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      
+  # Database catalog in the Lakebase instance
+  database_catalogs:
+    {{.project_name}}_catalog:
+      database_instance_name: ${var.database_instance_name}
+      database_name: "databricks_postgres"
+      name: ${var.database_catalog_name}
+      create_database_if_not_exists: true
+
+  # Synced database tables from DLT pipeline layers
+  synced_database_tables:
+    {{.project_name}}_gold_synced:
+      name: "${var.database_catalog_name}.databricks_postgres.gold_data_synced"
+      database_instance_name: ${var.database_instance_name}
+      logical_database_name: "databricks_postgres"
+      spec:
+        source_table_full_name: "${var.catalog}.${var.schema}.gold_data"
+        scheduling_policy: CONTINUOUS
+        primary_key_columns:
+          - id
+        timeseries_key: created_at
+        create_database_objects_if_missing: true
+        new_pipeline_spec:
+          storage_catalog: "${var.catalog}"
+          storage_schema: "${var.schema}"

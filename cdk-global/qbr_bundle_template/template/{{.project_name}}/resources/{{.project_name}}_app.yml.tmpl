@@ -1,0 +1,49 @@
+# Databricks App resource for {{.project_name}}
+resources:
+  apps:
+    {{.project_name}}_app:
+      name: {{.project_name}}-app
+      description: "Databricks App for {{.project_name}}"
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      
+      source_code_path: ../src
+
+      config:
+        command:
+          - python
+          - app.py
+
+        env:
+        - name: "CATALOG_NAME"
+          value: ${var.catalog}
+        - name: "SCHEMA_NAME"
+          value: ${var.schema}
+        - name: "DATABRICKS_WAREHOUSE_ID"
+          value: ${var.warehouse_id}
+    
+      resources:
+        # SQL Warehouse for data queries
+        - name: sql-warehouse
+          description: "SQL warehouse for querying data"
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+{{- if eq .include_lakebase "yes"}}
+        # Lakebase database instance
+        - name: lakebase-database
+          description: "PostgreSQL database"
+          database:
+            instance_name: ${var.database_instance_name}
+            database_name: databricks_postgres
+            permission: CAN_CONNECT_AND_CREATE
+{{- end}}
+{{- if eq .include_model_serving "yes"}}
+        # Model serving endpoint
+        - name: model-endpoint
+          description: "Model serving endpoint"
+          serving_endpoint:
+            name: {{.project_name}}-serving-endpoint
+            permission: CAN_QUERY
+{{- end}}

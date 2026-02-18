@@ -1,15 +1,15 @@
-# Lakeview Dashboard resource for new_product_feedback_categorization
+# Lakeview Dashboard resource for {{.project_name}}
 # Reference: https://docs.databricks.com/api/workspace/lakeview/create
 resources:
   dashboards:
-    new_product_feedback_categorization_dashboard:
-      display_name: "new_product_feedback_categorization Dashboard"
+    {{.project_name}}_dashboard:
+      display_name: "{{.project_name}} Dashboard"
       warehouse_id: "${var.warehouse_id}"
       dataset_catalog: ${var.catalog}
       dataset_schema: ${var.schema}
       
       # Dashboard file path (LVDASH format)
-      file_path: ../src/dashboards/new_product_feedback_categorization_dashboard.lvdash.json
+      file_path: ../src/dashboard.lvdash.json
       
       # Embed credentials for scheduled updates
       embed_credentials: true

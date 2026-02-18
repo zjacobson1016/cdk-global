@@ -1,0 +1,53 @@
+# Jobs for {{.project_name}}
+resources:
+  jobs:
+    # Job to run the metric view SQL script
+    {{.project_name}}_create_metric_view:
+      name: "[${bundle.target}] {{.project_name}} - Create Metric View"
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      tags:
+        project: "{{.project_name}}"
+      tasks:
+        - task_key: create_metric_view
+          sql_task:
+            parameters: 
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ${workspace.file_path}/src/metric_view.sql
+
+    # Main workflow job
+    {{.project_name}}_job:
+      name: {{.project_name}}_job
+{{- if ne .budget_policy_id ""}}
+      budget_policy_id: ${var.budget_policy_id}
+{{- end}}
+      tags:
+        project: "{{.project_name}}"
+      tasks:
+{{- if eq .include_dlt_pipeline "yes"}}
+        - task_key: dlt_pipeline_task
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.{{.project_name}}_pipeline.id}
+            full_refresh: false
+{{- end}}
+{{- if eq .include_model_serving "yes"}}
+        - task_key: model_training_task
+          spark_python_task:
+            python_file: ../src/model_training.py
+          environment_key: default
+  {{- if eq .include_dlt_pipeline "yes"}}
+          depends_on:
+            - task_key: dlt_pipeline_task
+  {{- end}}
+{{- end}}
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              ["-r ${workspace.file_path}/src/requirements.txt"]

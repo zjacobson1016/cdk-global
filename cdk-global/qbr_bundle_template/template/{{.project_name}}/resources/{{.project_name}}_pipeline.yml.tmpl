@@ -1,21 +1,21 @@
-# DLT Pipeline for new_product_feedback_categorization
+# DLT Pipeline for {{.project_name}}
 resources:
   pipelines:
-    new_product_feedback_categorization_pipeline:
-      name: new_product_feedback_categorization_pipeline
+    {{.project_name}}_pipeline:
+      name: {{.project_name}}_pipeline
+{{- if ne .budget_policy_id ""}}
       budget_policy_id: ${var.budget_policy_id}
-      environment:
-        dependencies: ["-r ${workspace.file_path}/src/requirements_model.txt"]
+{{- end}}
+      
       # Pipeline configuration
       configuration:
         catalog: ${var.catalog}
         schema: ${var.schema}
 
-
       # Pipeline libraries (notebooks or Python files)
       libraries:
         - notebook:
-            path: ../src/pipelines/dlt_pipeline.py
+            path: ../src/dlt_pipeline.py
             
       # Target catalog and schema
       catalog: ${var.catalog}
@@ -28,7 +28,7 @@ resources:
       continuous: false
       
       # Photon acceleration
-      photon: false
+      photon: true
       
       # Serverless compute
       serverless: true
@@ -41,4 +41,4 @@ resources:
       
       # Tags
       tags:
-        project: "new_product_feedback_categorization"
+        project: "{{.project_name}}"

@@ -1,0 +1,43 @@
+# Data Quality Monitor resources for {{.project_name}}
+# Reference: https://docs.databricks.com/api/workspace/qualitymonitors/create
+resources:
+  quality_monitors:
+    # Monitor for main data table
+    {{.project_name}}_data_monitor:
+      table_name: "${var.catalog}.${var.schema}.gold_data"
+      
+      # Assets directory for monitor outputs
+      assets_dir: "${workspace.file_path}/quality_monitors/gold_data"
+      
+      # Output schema for monitoring metrics
+      output_schema_name: "${var.catalog}.${var.schema}"
+      
+      # Snapshot configuration
+      snapshot: {}
+      
+      # Time series configuration (uncomment if needed)
+      # time_series:
+      #   timestamp_col: "created_at"
+      #   granularities: ["1 hour", "1 day", "1 week"]
+      
+      # Data classification tags
+      data_classification_config:
+        enabled: false
+      
+      # Schedule for monitor runs
+      schedule:
+        quartz_cron_expression: "0 0 */6 * * ?"  # Every 6 hours
+        timezone_id: "America/Chicago"
+      
+      # Notifications
+      notifications:
+        on_failure:
+          email_addresses:
+            - "{{.owner_email}}"
+      
+      # Custom metrics (optional)
+      # custom_metrics:
+      #   - name: "value_range"
+      #     input_columns: ["amount"]
+      #     definition: "max(amount) - min(amount)"
+      #     output_data_type: "double"

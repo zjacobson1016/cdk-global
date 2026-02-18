@@ -1,0 +1,73 @@
+# Databricks Asset Bundle for {{.project_name}}
+# Generated from QBR Demo Template
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: {{.project_name}}
+
+include:
+{{- if eq .include_dlt_pipeline "yes"}}
+  - resources/{{.project_name}}_pipeline.yml
+{{- end}}
+{{- if eq .include_dashboard "yes"}}
+  - resources/{{.project_name}}_dashboard.yml
+{{- end}}
+{{- if eq .include_lakebase "yes"}}
+  - resources/{{.project_name}}_database_instance.yml
+{{- end}}
+{{- if eq .include_app "yes"}}
+  - resources/{{.project_name}}_app.yml
+{{- end}}
+  - resources/{{.project_name}}_job.yml
+{{- if eq .include_model_serving "yes"}}
+  - resources/{{.project_name}}_serving_endpoint.yml
+{{- end}}
+{{- if eq .include_quality_monitors "yes"}}
+  - resources/{{.project_name}}_quality_monitor.yml
+{{- end}}
+
+variables:
+  catalog:
+    description: "Default catalog for the project"
+    default: "{{.catalog}}"
+  schema:
+    description: "Default schema for the project"
+    default: "{{.schema}}"
+  warehouse_id:
+    description: "SQL Warehouse ID for dashboards and apps"
+    default: "{{.warehouse_id}}"
+{{- if eq .include_lakebase "yes"}}
+  database_instance_name:
+    description: "Database instance name"
+    default: "{{.project_name}}-instance"
+  database_catalog_name:
+    description: "Database catalog name"
+    default: "{{.project_name}}_databricks_db"
+{{- end}}
+{{- if eq .include_model_serving "yes"}}
+  model_name:
+    description: "Model name for serving"
+    default: "{{.project_name}}_model"
+{{- end}}
+{{- if ne .budget_policy_id ""}}
+  budget_policy_id:
+    description: "Budget policy ID for cost attribution"
+    default: "{{.budget_policy_id}}"
+{{- end}}
+
+targets:
+  # The 'dev' target, used for development purposes.
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: {{.workspace_host}}
+
+  # The 'prod' target, used for production deployment.
+  prod:
+    mode: production
+    workspace:
+      host: {{.workspace_host}}
+      root_path: /Shared/.bundle/prod/${bundle.name}
+    run_as:
+      user_name: {{.owner_email}}
