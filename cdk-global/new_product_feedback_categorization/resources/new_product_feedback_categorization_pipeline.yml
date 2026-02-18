@@ -15,7 +15,7 @@ resources:
       # Pipeline libraries (notebooks or Python files)
       libraries:
         - notebook:
-            path: ../src/dlt_pipeline.py
+            path: ../src/pipelines/dlt_pipeline.py
             
       # Target catalog and schema
       catalog: ${var.catalog}

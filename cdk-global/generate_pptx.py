@@ -442,18 +442,17 @@ for i, (value, label, desc, color) in enumerate(metrics):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# SLIDE 10 – Breakout Sessions Schedule
+# SLIDE 10 – Day 1 Schedule
 # ═══════════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(prs.slide_layouts[6])
-_section_header(slide, "Breakout Sessions", "Hands-on schedule across three tracks")
+_section_header(slide, "Day 1: Welcome & Platform Overview",
+                "9:00 AM - 1:30 PM  |  Introductions, solution context, and Databricks platform deep dive")
 
-# ── Schedule timeline ──
 col_time_x  = Inches(0.6)
 col_sess_x  = Inches(2.6)
 col_detail_x = Inches(7.0)
 header_y = Inches(3.1)
 
-# Column headers
 _add_text_box(slide, col_time_x, header_y, Inches(1.8), Inches(0.4),
               "Time", font_size=13, color=MED_GRAY, bold=True)
 _add_text_box(slide, col_sess_x, header_y, Inches(4.2), Inches(0.4),
@@ -461,31 +460,26 @@ _add_text_box(slide, col_sess_x, header_y, Inches(4.2), Inches(0.4),
 _add_text_box(slide, col_detail_x, header_y, Inches(5.5), Inches(0.4),
               "Key Topics", font_size=13, color=MED_GRAY, bold=True)
 
-schedule = [
-    ("9:00 - 9:15",   "Welcome & Solution Overview",           "All",              WHITE,       None),
-    ("9:15 - 10:00",  "Databricks Platform Overview",          "Platform",         BLUE,
+schedule_day1 = [
+    ("9:00 - 9:30",   "Welcome & Solution Overview",   "All",      WHITE,
+     "Introductions  |  Workshop Goals\nCDK Solution Architecture Walkthrough\nEnd-to-end demo preview"),
+    ("9:30 - 10:45",  "Databricks Platform Overview",  "Platform", BLUE,
      "Lakehouse Architecture  |  Unity Catalog\nDelta Lake  |  Serverless Compute\nWorkspace, Clusters, SQL Warehouses"),
-    ("10:00 - 10:15", "Break",                                 "",                 MED_GRAY,    None),
-    ("10:15 - 11:15", "Session 1: Data Engineering",           "Data Pipelines",   ACCENT_RED,
-     "Auto Loader  |  Document AI (ai_parse_document)\nSDP Pipeline: Bronze / Silver / Gold\n3-way join on application_id"),
-    ("11:15 - 11:30", "Break",                                 "",                 MED_GRAY,    None),
-    ("11:30 - 12:45", "Session 2: ML & MLOps",                 "ML / MLOps",       ACCENT_GOLD,
-     "Feature Engineering + UC Functions\nOptuna HPO + pyfunc wrapper with rules\nChampion/Challenger  |  Serving  |  Monitoring"),
-    ("12:45 - 1:00",  "Break",                                 "",                 MED_GRAY,    None),
-    ("1:00 - 2:00",   "Session 3: AI & Agent Bricks",          "AI",               GREEN,
-     "Lender Shopping Agent (ResponsesAgent)\nGenie Space for self-service analytics\nMulti-Agent Supervisor orchestration"),
-    ("2:00 - 2:30",   "Conclusion & Next Steps",               "All",              WHITE,       None),
+    ("10:45 - 11:00", "Break",                         "",         MED_GRAY, None),
+    ("11:00 - 12:15", "Platform Deep Dive",            "Platform", BLUE,
+     "Data Engineering: Auto Loader, SDP Pipelines\nSQL Analytics: Warehouses, Dashboards, Genie\nAI & GenAI: Foundation Models, Vector Search\nGovernance: Lineage, Row/Column Security"),
+    ("12:15 - 12:45", "Lunch",                         "",         MED_GRAY, None),
+    ("12:45 - 1:30",  "Platform Hands-On & Q&A",       "Platform", BLUE,
+     "Live platform walkthrough\nWorkspace navigation & notebooks\nUnity Catalog exploration"),
 ]
 
 y = Inches(3.5)
-for time_str, session, track, color, details in schedule:
-    is_break = session == "Break"
+for time_str, session, track, color, details in schedule_day1:
+    is_break = session in ("Break", "Lunch")
     row_h = Inches(0.35) if is_break else Inches(0.95) if details else Inches(0.5)
 
     if not is_break and details:
         _add_card(slide, Inches(0.5), y - Inches(0.05), Inches(12.3), row_h + Inches(0.1))
-
-    # Accent bar for sessions with details
     if details:
         _accent_bar(slide, Inches(0.65), y + Inches(0.05), Inches(0.05), row_h - Inches(0.1), color)
 
@@ -498,7 +492,62 @@ for time_str, session, track, color, details in schedule:
     if track and not is_break:
         _add_text_box(slide, col_sess_x, y + Inches(0.3), Inches(4.2), Inches(0.3),
                       f"Track: {track}", font_size=11, color=MED_GRAY)
+    if details:
+        _add_text_box(slide, col_detail_x, y + Inches(0.02), Inches(5.5), row_h - Inches(0.05),
+                      details, font_size=11, color=LIGHT_GRAY)
 
+    y += row_h + Inches(0.08)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SLIDE 10b – Day 2 Schedule
+# ═══════════════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+_section_header(slide, "Day 2: Hands-On Breakout Sessions",
+                "9:00 AM - 1:00 PM  |  AI Engineering, Data Engineering, ML & MLOps/LLMOps")
+
+col_time_x  = Inches(0.6)
+col_sess_x  = Inches(2.6)
+col_detail_x = Inches(7.0)
+header_y = Inches(3.1)
+
+_add_text_box(slide, col_time_x, header_y, Inches(1.8), Inches(0.4),
+              "Time", font_size=13, color=MED_GRAY, bold=True)
+_add_text_box(slide, col_sess_x, header_y, Inches(4.2), Inches(0.4),
+              "Session", font_size=13, color=MED_GRAY, bold=True)
+_add_text_box(slide, col_detail_x, header_y, Inches(5.5), Inches(0.4),
+              "Key Topics", font_size=13, color=MED_GRAY, bold=True)
+
+schedule_day2 = [
+    ("9:00 - 10:15",  "AI Engineering",        "AI",             GREEN,
+     "Agent Bricks  |  Genie Spaces\nUC Functions  |  Model Serving\nMulti-Agent Supervisor orchestration"),
+    ("10:15 - 10:30", "Break",                  "",               MED_GRAY, None),
+    ("10:30 - 11:45", "Data Engineering",       "Data Pipelines", ACCENT_RED,
+     "Auto Loader  |  Document AI (ai_parse_document)\nSDP Pipeline: Bronze / Silver / Gold\n3-way join on application_id"),
+    ("11:45 - 12:00", "Break",                  "",               MED_GRAY, None),
+    ("12:00 - 1:00",  "ML & MLOps/LLMOps",     "ML / MLOps",     ACCENT_GOLD,
+     "Feature Engineering + UC Functions\nOptuna HPO + pyfunc wrapper with rules\nChampion/Challenger  |  Serving  |  Monitoring"),
+]
+
+y = Inches(3.5)
+for time_str, session, track, color, details in schedule_day2:
+    is_break = session == "Break"
+    row_h = Inches(0.35) if is_break else Inches(0.95) if details else Inches(0.5)
+
+    if not is_break and details:
+        _add_card(slide, Inches(0.5), y - Inches(0.05), Inches(12.3), row_h + Inches(0.1))
+    if details:
+        _accent_bar(slide, Inches(0.65), y + Inches(0.05), Inches(0.05), row_h - Inches(0.1), color)
+
+    _add_text_box(slide, col_time_x + Inches(0.2), y, Inches(1.6), Inches(0.35),
+                  time_str, font_size=12, color=LIGHT_GRAY if is_break else WHITE, bold=not is_break)
+    _add_text_box(slide, col_sess_x, y, Inches(4.2), Inches(0.35),
+                  session, font_size=13 if not is_break else 11,
+                  color=MED_GRAY if is_break else color, bold=not is_break)
+
+    if track and not is_break:
+        _add_text_box(slide, col_sess_x, y + Inches(0.3), Inches(4.2), Inches(0.3),
+                      f"Track: {track}", font_size=11, color=MED_GRAY)
     if details:
         _add_text_box(slide, col_detail_x, y + Inches(0.02), Inches(5.5), row_h - Inches(0.05),
                       details, font_size=11, color=LIGHT_GRAY)
@@ -549,11 +598,11 @@ _add_bullet_list(slide, Inches(7.25), Inches(3.9), Inches(5.1), Inches(2.8),
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# SLIDE 12 – Session 1 Deep Dive: Data Engineering (renumbered)
+# SLIDE 13 – Deep Dive: Data Engineering
 # ═══════════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(prs.slide_layouts[6])
-_section_header(slide, "Session 1: Data Engineering",
-                "Ingesting structured and unstructured data through a medallion architecture  |  60 min")
+_section_header(slide, "Data Engineering",
+                "Ingesting structured and unstructured data through a medallion architecture  |  75 min")
 
 # Left column – What we build
 _add_card(slide, Inches(0.6), Inches(3.2), Inches(5.8), Inches(3.8))
@@ -591,11 +640,11 @@ _add_bullet_list(slide, Inches(7.25), Inches(3.9), Inches(5.1), Inches(2.8),
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# SLIDE 13 – Session 2 Deep Dive: ML & MLOps
+# SLIDE 14 – Deep Dive: ML & MLOps/LLMOps
 # ═══════════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(prs.slide_layouts[6])
-_section_header(slide, "Session 2: Machine Learning & MLOps",
-                "Feature engineering, model training with business rules, and production deployment  |  75 min")
+_section_header(slide, "ML & MLOps/LLMOps",
+                "Feature engineering, model training with business rules, and production deployment  |  60 min")
 
 _add_card(slide, Inches(0.6), Inches(3.2), Inches(5.8), Inches(3.8))
 _accent_bar(slide, Inches(0.8), Inches(3.35), Inches(0.05), Inches(0.5), ACCENT_GOLD)
@@ -635,24 +684,23 @@ _add_bullet_list(slide, Inches(7.25), Inches(3.9), Inches(5.1), Inches(2.8),
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# SLIDE 14 – Session 3 Deep Dive: AI & Agent Bricks
+# SLIDE 15 – Deep Dive: AI Engineering
 # ═══════════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(prs.slide_layouts[6])
-_section_header(slide, "Session 3: AI & Agent Bricks",
-                "Multi-Agent Supervisor + Genie Spaces + UC Function tools  |  60 min")
+_section_header(slide, "AI Engineering",
+                "Agent Bricks  |  Genie Spaces  |  UC Functions  |  Model Serving  |  75 min")
 
 _add_card(slide, Inches(0.6), Inches(3.2), Inches(5.8), Inches(3.8))
 _accent_bar(slide, Inches(0.8), Inches(3.35), Inches(0.05), Inches(0.5), GREEN)
 _add_text_box(slide, Inches(1.05), Inches(3.3), Inches(5.1), Inches(0.5),
-              "What We Build", font_size=18, color=GREEN, bold=True)
+              "Key Topics", font_size=18, color=GREEN, bold=True)
 steps_ai = [
-    "Lender programs reference table (8 lenders, 20 programs)",
-    "shop_lenders() UC Function for rate comparison",
-    "Lender Shopping Agent (ResponsesAgent + LangGraph)",
-    "Deploy custom agent to Model Serving endpoint",
-    "Genie Space on gold + inference tables",
-    "Multi-Agent Supervisor routing all 3 agents",
-    "End-to-end test: approve, analyze, and shop rates",
+    "Agent Bricks: Knowledge Assistants & Multi-Agent Supervisors",
+    "Genie Spaces: self-service SQL analytics via natural language",
+    "UC Functions: create tool functions for agent orchestration",
+    "Model Serving: deploy agents & models to endpoints",
+    "ResponsesAgent + LangGraph custom agent pattern",
+    "End-to-end: approve, analyze, and shop lender rates",
 ]
 _add_bullet_list(slide, Inches(1.05), Inches(3.9), Inches(5.1), Inches(2.8),
                  [f"  {s}" for s in steps_ai], font_size=13, color=LIGHT_GRAY)
@@ -660,7 +708,7 @@ _add_bullet_list(slide, Inches(1.05), Inches(3.9), Inches(5.1), Inches(2.8),
 _add_card(slide, Inches(6.8), Inches(3.2), Inches(5.8), Inches(3.8))
 _accent_bar(slide, Inches(7.0), Inches(3.35), Inches(0.05), Inches(0.5), GREEN)
 _add_text_box(slide, Inches(7.25), Inches(3.3), Inches(5.1), Inches(0.5),
-              "Notebooks & Files", font_size=18, color=GREEN, bold=True)
+              "Notebooks & Components", font_size=18, color=GREEN, bold=True)
 notebooks_ai = [
     "09a_generate_lender_programs.py",
     "09b_setup_agent_bricks.py",
@@ -671,6 +719,7 @@ notebooks_ai = [
     "Databricks Components:",
     "  Genie Space: CDK Lending Analytics",
     "  MAS: CDK Lending Supervisor",
+    "  Model Serving Endpoint (custom agent)",
 ]
 _add_bullet_list(slide, Inches(7.25), Inches(3.9), Inches(5.1), Inches(2.8),
                  [f"  {s}" for s in notebooks_ai], font_size=12, color=LIGHT_GRAY)

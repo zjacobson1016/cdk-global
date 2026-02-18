@@ -1,0 +1,233 @@
+# Cost monitoring alerts on system.billing.usage
+# Each alert fires when the previous day's estimated spend exceeds the configured threshold.
+# Schedule: Daily at 7:00 AM ET (Quartz format)
+resources:
+  alerts:
+    # ── 1. Daily Cost Summary ────────────────────────────────────────────────
+    daily_cost_summary:
+      display_name: "[${bundle.target}] Alert: Daily Spend Exceeds Threshold"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('JOBS') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS jobs_cost,
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('DLT') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS pipelines_cost,
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('MODEL_SERVING') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS model_serving_cost,
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('VECTOR_SEARCH') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS vector_search_cost,
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('DATABASE', 'LAKEBASE') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS lakebase_cost,
+          ROUND(SUM(CASE WHEN billing_origin_product IN ('ALL_PURPOSE', 'INTERACTIVE') THEN usage_quantity * COALESCE(p.pricing.default, 0) END), 2) AS notebooks_cost,
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS total_cost
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product IN ('JOBS', 'DLT', 'MODEL_SERVING', 'VECTOR_SEARCH', 'DATABASE', 'LAKEBASE', 'ALL_PURPOSE', 'INTERACTIVE')
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "total_cost"
+          display: "total_cost"
+        threshold:
+          value:
+            double_value: 50000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's estimated cost across Jobs, Pipelines, Model Serving, Vector Search, Lakebase, and Notebooks."
+
+    # ── 2. Model Serving ─────────────────────────────────────────────────────
+    model_serving_cost:
+      display_name: "[${bundle.target}] Alert: Model Serving Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS model_serving_cost,
+          COUNT(DISTINCT usage_metadata.endpoint_name) AS active_endpoints
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product = 'MODEL_SERVING'
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "model_serving_cost"
+          display: "model_serving_cost"
+        threshold:
+          value:
+            double_value: 15000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's model serving endpoint cost with active endpoint count."
+
+    # ── 3. Vector Search ─────────────────────────────────────────────────────
+    vector_search_cost:
+      display_name: "[${bundle.target}] Alert: Vector Search Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS vector_search_cost,
+          COUNT(DISTINCT usage_metadata.endpoint_name) AS active_endpoints
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product = 'VECTOR_SEARCH'
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "vector_search_cost"
+          display: "vector_search_cost"
+        threshold:
+          value:
+            double_value: 8000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's vector search endpoint cost."
+
+    # ── 4. Lakebase ──────────────────────────────────────────────────────────
+    lakebase_cost:
+      display_name: "[${bundle.target}] Alert: Lakebase Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS lakebase_cost,
+          COUNT(DISTINCT usage_metadata.database_instance_id) AS active_instances
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product IN ('DATABASE', 'LAKEBASE')
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "lakebase_cost"
+          display: "lakebase_cost"
+        threshold:
+          value:
+            double_value: 15000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's Lakebase (managed database) cost."
+
+    # ── 5. Jobs ──────────────────────────────────────────────────────────────
+    jobs_cost:
+      display_name: "[${bundle.target}] Alert: Jobs Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS jobs_cost,
+          COUNT(DISTINCT usage_metadata.job_id) AS active_jobs
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product = 'JOBS'
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "jobs_cost"
+          display: "jobs_cost"
+        threshold:
+          value:
+            double_value: 2000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's jobs compute cost with active job count."
+
+    # ── 6. Pipelines (DLT/SDP) ───────────────────────────────────────────────
+    pipelines_cost:
+      display_name: "[${bundle.target}] Alert: Pipelines Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS pipelines_cost,
+          COUNT(DISTINCT usage_metadata.dlt_pipeline_id) AS active_pipelines
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product = 'DLT'
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "pipelines_cost"
+          display: "pipelines_cost"
+        threshold:
+          value:
+            double_value: 1000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's DLT/SDP pipeline cost with active pipeline count."
+
+    # ── 7. Notebooks (Interactive / All-Purpose) ─────────────────────────────
+    notebooks_cost:
+      display_name: "[${bundle.target}] Alert: Notebooks Daily Spend"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        SELECT
+          ROUND(SUM(usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS notebooks_cost,
+          COUNT(DISTINCT COALESCE(usage_metadata.notebook_id, usage_metadata.cluster_id)) AS active_sessions
+        FROM system.billing.usage u
+        LEFT JOIN system.billing.list_prices p
+          ON u.sku_name = p.sku_name AND u.cloud = p.cloud AND p.price_end_time IS NULL
+        WHERE u.usage_date = current_date() - 1
+          AND billing_origin_product IN ('ALL_PURPOSE', 'INTERACTIVE')
+      evaluation:
+        comparison_operator: "GREATER_THAN"
+        empty_result_state: "UNKNOWN"
+        source:
+          name: "notebooks_cost"
+          display: "notebooks_cost"
+        threshold:
+          value:
+            double_value: 3000
+        notification:
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+      schedule:
+        pause_status: "UNPAUSED"
+        quartz_cron_schedule: "0 0 7 ? * * *"
+        timezone_id: "America/New_York"
+      custom_description: "Yesterday's interactive/all-purpose compute cost (notebooks, clusters)."

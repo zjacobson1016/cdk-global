@@ -7,6 +7,7 @@ bundle:
 include:
   - resources/lender_approval_mlops_pipeline.yml
   - resources/lender_approval_mlops_job.yml
+  - resources/lender_approval_mlops_alerts.yml
 
 scripts:
   generate_lender_data:

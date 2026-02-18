@@ -9,7 +9,7 @@ resources:
       dataset_schema: ${var.schema}
       
       # Dashboard file path (LVDASH format)
-      file_path: ../src/dashboard.lvdash.json
+      file_path: ../src/dashboards/new_product_feedback_categorization_dashboard.lvdash.json
       
       # Embed credentials for scheduled updates
       embed_credentials: true

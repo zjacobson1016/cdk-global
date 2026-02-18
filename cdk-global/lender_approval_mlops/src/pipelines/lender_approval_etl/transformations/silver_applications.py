@@ -12,7 +12,7 @@ def silver_applications():
     # --- Structured applications (parquet) ---
     apps = (
         spark.read.table("bronze_applications")
-        .filter(F.col("application_id").isNotNull())
+        .filter(F.col("applicßation_id").isNotNull())
         .withColumn("application_date", F.to_date(F.col("application_date")))
         .withColumn("income", F.col("income").cast("double"))
         .withColumn("credit_score", F.col("credit_score").cast("int"))
