@@ -100,6 +100,7 @@ Set the scene: *You're Sarah, an F&I manager at a high-volume dealership in Dall
 **Turn 1** — Sarah checks the landscape *(routes to Lending Analytics / Genie)*:
 
 > *"How are our approval rates looking across credit tiers this month? I want to know where we stand before I start working this deal."*
+> *Can you provide the credit score for application_id APP-00001*
 
 The supervisor recognizes this as a data question and routes it to the **Lending Analytics** agent (a Genie Space). Genie translates the question to SQL, queries `gold_lender_features`, and returns:
 
