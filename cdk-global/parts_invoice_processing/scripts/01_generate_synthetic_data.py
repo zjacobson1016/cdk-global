@@ -8,7 +8,7 @@ from pyspark.sql import SparkSession
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-CATALOG = "home_zach_jacobson"
+CATALOG = "mfg_mc_se_sa"
 SCHEMA = "cdk"
 VOLUME_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/raw_data"
 

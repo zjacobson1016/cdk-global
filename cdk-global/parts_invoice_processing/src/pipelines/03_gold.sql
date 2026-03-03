@@ -1,23 +1,30 @@
 -- =============================================================================
--- GOLD LAYER: 3-Way Matching, Classification, and Approval Routing
+-- GOLD LAYER: 3-Way Matching with AI-Parsed Invoice PDFs
 -- Parts Invoice Processing Pipeline - Sunset CDJR Dealership
+--
+-- Invoice data sourced exclusively from AI-parsed PDFs
+-- (silver_parsed_invoices_flat), joined to POs, receiving reports, and
+-- suppliers for 3-way match with approval routing.
 -- =============================================================================
 
--- 3-Way Match: Invoice vs Purchase Order vs Receiving Report
+-- 3-Way Match: AI-Parsed Invoice PDF vs Purchase Order vs Receiving Report
 CREATE OR REFRESH MATERIALIZED VIEW gold_invoice_match
 AS
 SELECT
-  inv.invoice_id,
+  regexp_extract(inv.file_path, '(INV-\\d+)\\.pdf$', 1) AS invoice_id,
   inv.invoice_number,
-  inv.supplier_id,
-  inv.supplier_name,
+  inv.vendor_name,
+  inv.vendor_address,
   inv.invoice_date,
   inv.due_date,
-  inv.po_number AS invoice_po_ref,
+  inv.po_reference,
   inv.part_number,
-  inv.part_name,
+  inv.part_description,
   inv.quantity AS invoice_qty,
   inv.unit_price AS invoice_unit_price,
+  inv.line_total AS invoice_line_total,
+  inv.subtotal AS invoice_subtotal,
+  inv.tax AS invoice_tax,
   inv.total_amount AS invoice_total,
   inv.payment_terms,
   inv.department,
@@ -38,12 +45,16 @@ SELECT
   rr.received_date,
   rr.condition AS receiving_condition,
 
+  -- Supplier tier
+  sup.vendor_tier,
+  sup.supplier_id,
+
   -- Match analysis
   CASE
-    WHEN inv.po_number IS NULL OR inv.po_number = '' THEN 'NO_PO_REFERENCE'
+    WHEN inv.po_reference IS NULL OR inv.po_reference = '' THEN 'NO_PO_REFERENCE'
     WHEN po.po_number IS NULL THEN 'PO_NOT_FOUND'
     WHEN rr.receiving_id IS NULL THEN 'NOT_RECEIVED'
-    WHEN inv.quantity != po.quantity_ordered AND inv.unit_price != po.unit_price THEN 'QTY_AND_PRICE_MISMATCH'
+    WHEN inv.quantity != po.quantity_ordered AND ABS(inv.unit_price - po.unit_price) > 0.01 THEN 'QTY_AND_PRICE_MISMATCH'
     WHEN inv.quantity != po.quantity_ordered THEN 'QUANTITY_MISMATCH'
     WHEN ABS(inv.unit_price - po.unit_price) > 0.01 THEN 'PRICE_MISMATCH'
     WHEN rr.quantity_accepted < po.quantity_ordered THEN 'PARTIAL_RECEIPT'
@@ -64,114 +75,34 @@ SELECT
     ELSE NULL
   END AS quantity_variance,
 
-  -- Supplier tier
-  sup.vendor_tier
+  -- Approval routing
+  CASE
+    WHEN inv.po_reference IS NULL OR inv.po_reference = '' THEN 'PO_REQUIRED'
+    WHEN po.po_number IS NULL THEN 'EXCEPTION_REVIEW'
+    WHEN rr.receiving_id IS NULL THEN 'RECEIVING_REVIEW'
+    WHEN inv.quantity != po.quantity_ordered OR ABS(inv.unit_price - po.unit_price) > 0.01 THEN 'EXCEPTION_REVIEW'
+    WHEN rr.quantity_accepted < po.quantity_ordered THEN 'RECEIVING_REVIEW'
+    WHEN inv.total_amount <= 1000 AND sup.vendor_tier = 'Preferred' THEN 'AUTO_APPROVED'
+    WHEN inv.total_amount <= 500 THEN 'AUTO_APPROVED'
+    WHEN inv.total_amount <= 5000 THEN 'SERVICE_MANAGER'
+    WHEN inv.total_amount <= 15000 THEN 'PARTS_DIRECTOR'
+    ELSE 'GENERAL_MANAGER'
+  END AS approval_route,
 
-FROM silver_invoices inv
+  -- Invoice classification
+  CASE
+    WHEN inv.po_reference IS NULL OR inv.po_reference = '' OR po.po_number IS NULL THEN 'UNMATCHED'
+    WHEN inv.quantity != po.quantity_ordered OR ABS(inv.unit_price - po.unit_price) > 0.01 THEN 'DISCREPANCY'
+    WHEN rr.receiving_id IS NULL OR rr.quantity_accepted < po.quantity_ordered THEN 'RECEIVING_ISSUE'
+    ELSE 'STANDARD'
+  END AS invoice_classification
+
+FROM silver_parsed_invoices_flat inv
 LEFT JOIN silver_purchase_orders po
-  ON inv.po_number = po.po_number
+  ON inv.po_reference = po.po_number
 LEFT JOIN silver_receiving_reports rr
   ON po.po_number = rr.po_number
 LEFT JOIN silver_suppliers sup
-  ON inv.supplier_id = sup.supplier_id;
-
-
--- Approval routing logic based on match status, amount, and vendor tier
-CREATE OR REFRESH MATERIALIZED VIEW gold_invoice_approval_queue
-AS
-SELECT
-  invoice_id,
-  invoice_number,
-  supplier_name,
-  vendor_tier,
-  invoice_date,
-  due_date,
-  invoice_total,
-  match_status,
-  price_variance_pct,
-  quantity_variance,
-  department,
-  po_number,
-
-  -- Auto-approve if matched, under $1000, and preferred vendor
-  CASE
-    WHEN match_status = 'MATCHED' AND invoice_total <= 1000 AND vendor_tier = 'Preferred'
-      THEN 'AUTO_APPROVED'
-    WHEN match_status = 'MATCHED' AND invoice_total <= 500
-      THEN 'AUTO_APPROVED'
-    WHEN match_status = 'MATCHED' AND invoice_total <= 5000
-      THEN 'SERVICE_MANAGER'
-    WHEN match_status = 'MATCHED' AND invoice_total <= 15000
-      THEN 'PARTS_DIRECTOR'
-    WHEN match_status = 'MATCHED'
-      THEN 'GENERAL_MANAGER'
-    WHEN match_status IN ('PRICE_MISMATCH', 'QUANTITY_MISMATCH', 'QTY_AND_PRICE_MISMATCH')
-      THEN 'EXCEPTION_REVIEW'
-    WHEN match_status = 'PARTIAL_RECEIPT'
-      THEN 'RECEIVING_REVIEW'
-    WHEN match_status = 'NO_PO_REFERENCE'
-      THEN 'PO_REQUIRED'
-    WHEN match_status = 'PO_NOT_FOUND'
-      THEN 'EXCEPTION_REVIEW'
-    WHEN match_status = 'NOT_RECEIVED'
-      THEN 'RECEIVING_REVIEW'
-    ELSE 'MANUAL_REVIEW'
-  END AS approval_route,
-
-  -- Priority based on due date proximity and amount
-  CASE
-    WHEN DATEDIFF(due_date, current_date()) <= 3 THEN 'URGENT'
-    WHEN DATEDIFF(due_date, current_date()) <= 7 THEN 'HIGH'
-    WHEN DATEDIFF(due_date, current_date()) <= 14 THEN 'MEDIUM'
-    ELSE 'LOW'
-  END AS priority,
-
-  -- Days until due
-  DATEDIFF(due_date, current_date()) AS days_until_due,
-
-  -- Classification
-  CASE
-    WHEN match_status = 'MATCHED' THEN 'STANDARD'
-    WHEN match_status IN ('PRICE_MISMATCH', 'QUANTITY_MISMATCH', 'QTY_AND_PRICE_MISMATCH') THEN 'DISCREPANCY'
-    WHEN match_status IN ('NO_PO_REFERENCE', 'PO_NOT_FOUND') THEN 'UNMATCHED'
-    WHEN match_status IN ('PARTIAL_RECEIPT', 'NOT_RECEIVED') THEN 'RECEIVING_ISSUE'
-    ELSE 'OTHER'
-  END AS invoice_classification
-
-FROM gold_invoice_match;
-
-
--- Summary metrics for dashboard / agent queries
-CREATE OR REFRESH MATERIALIZED VIEW gold_invoice_summary
-AS
-SELECT
-  match_status,
-  approval_route,
-  invoice_classification,
-  priority,
-  COUNT(*) AS invoice_count,
-  SUM(invoice_total) AS total_value,
-  AVG(invoice_total) AS avg_invoice_value,
-  MIN(days_until_due) AS min_days_until_due
-FROM gold_invoice_approval_queue
-GROUP BY match_status, approval_route, invoice_classification, priority;
-
-
--- Supplier performance metrics
-CREATE OR REFRESH MATERIALIZED VIEW gold_supplier_performance
-AS
-SELECT
-  im.supplier_id,
-  im.supplier_name,
-  im.vendor_tier,
-  COUNT(*) AS total_invoices,
-  SUM(CASE WHEN im.match_status = 'MATCHED' THEN 1 ELSE 0 END) AS matched_invoices,
-  SUM(CASE WHEN im.match_status != 'MATCHED' THEN 1 ELSE 0 END) AS discrepancy_invoices,
-  ROUND(
-    SUM(CASE WHEN im.match_status = 'MATCHED' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1
-  ) AS match_rate_pct,
-  SUM(im.invoice_total) AS total_invoice_value,
-  AVG(im.invoice_total) AS avg_invoice_value,
-  AVG(ABS(COALESCE(im.price_variance_pct, 0))) AS avg_price_variance_pct
-FROM gold_invoice_match im
-GROUP BY im.supplier_id, im.supplier_name, im.vendor_tier;
+  ON inv.vendor_name = sup.supplier_name
+LEFT JOIN silver_emails em
+  ON regexp_extract(inv.file_path, '(INV-\\d+)\\.pdf$', 1) = em.invoice_id;

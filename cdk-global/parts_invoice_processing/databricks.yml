@@ -1,0 +1,53 @@
+# Databricks Asset Bundle - Parts Invoice Processing
+# Synthetic data → UC Volume → SDP (bronze/silver/gold) → UC Functions/Stored Procedures → Lakebase → Agent deployment
+
+bundle:
+  name: parts_invoice_processing
+
+include:
+  - resources/*.yml
+scripts:
+  generate_synthetic_data:
+    content: python3 scripts/01_generate_synthetic_data.py
+  generate_invoice_pdfs:
+    content: python3 scripts/02_generate_invoice_pdfs.py
+  create_uc_functions:
+    content: python3 src/uc_functions/create_functions.py
+  setup_lakebase:
+    content: python3 scripts/03_create_approval_tables.py
+  create_metric_views:
+    content: python3 src/metric_views/create_invoice_metrics.py
+variables:
+  catalog:
+    description: "Unity Catalog catalog for tables, volumes, and functions"
+    default: "mfg_mc_se_sa"
+  schema:
+    description: "Schema for pipeline tables and raw_data volume"
+    default: "cdk"
+  warehouse_id:
+    description: "SQL Warehouse ID for SQL tasks"
+    default: "bce0a02b2be86f1b"
+  budget_policy_id:
+    description: "Budget policy ID for cost attribution"
+    default: "5b1cd9b7-9295-45e7-aab7-d7942bd4dfa3"
+  lakebase_instance:
+    description: "Lakebase Provisioned instance name for approval tracking"
+    default: "cdk-invoice-dev"
+  lakebase_database:
+    description: "PostgreSQL database name within the Lakebase instance"
+    default: "databricks_postgres"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: group-demo
+
+  prod:
+    mode: production
+    workspace:
+      profile: group-demo
+      root_path: /Shared/.bundle/prod/${bundle.name}
+    run_as:
+      user_name: zach.jacobson@databricks.com

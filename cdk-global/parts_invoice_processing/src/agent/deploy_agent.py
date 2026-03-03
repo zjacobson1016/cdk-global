@@ -1,11 +1,23 @@
-"""Deploy the Invoice Processing Agent to a Model Serving endpoint."""
-import sys
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Deploy Invoice Processing Agent
+# MAGIC Deploys the registered agent to a Model Serving endpoint.
+
+# COMMAND ----------
+
+# MAGIC %pip install databricks-agents
+# MAGIC %restart_python
+
+# COMMAND ----------
+
 from databricks import agents
 
-model_name = sys.argv[1] if len(sys.argv) > 1 else "home_zach_jacobson.models.parts_invoice_agent"
-version = sys.argv[2] if len(sys.argv) > 2 else "1"
+model_name = "mfg_mc_se_sa.cdk.parts_invoice_agent"
+version = "1"
 
 print(f"Deploying {model_name} version {version}...")
+
+# COMMAND ----------
 
 deployment = agents.deploy(
     model_name,

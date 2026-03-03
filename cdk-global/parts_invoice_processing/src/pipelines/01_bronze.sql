@@ -1,6 +1,7 @@
 -- =============================================================================
 -- BRONZE LAYER: Raw data ingestion from Unity Catalog Volumes
 -- Parts Invoice Processing Pipeline - Sunset CDJR Dealership
+-- Pipeline config variables: ${catalog}, ${schema}
 -- =============================================================================
 
 -- Suppliers master data
@@ -12,7 +13,7 @@ SELECT
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/suppliers/',
+  '/Volumes/${catalog}/${schema}/raw_data/suppliers/',
   format => 'parquet'
 );
 
@@ -25,7 +26,7 @@ SELECT
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/purchase_orders/',
+  '/Volumes/${catalog}/${schema}/raw_data/purchase_orders/',
   format => 'parquet'
 );
 
@@ -38,7 +39,7 @@ SELECT
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/receiving_reports/',
+  '/Volumes/${catalog}/${schema}/raw_data/receiving_reports/',
   format => 'parquet'
 );
 
@@ -51,7 +52,7 @@ SELECT
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/invoices/',
+  '/Volumes/${catalog}/${schema}/raw_data/invoices/',
   format => 'parquet'
 );
 
@@ -64,7 +65,7 @@ SELECT
   current_timestamp() AS _ingested_at,
   _metadata.file_path AS _source_file
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/emails/',
+  '/Volumes/${catalog}/${schema}/raw_data/emails/',
   format => 'parquet'
 );
 
@@ -78,6 +79,6 @@ SELECT
   modificationTime AS file_modified_at,
   current_timestamp() AS _ingested_at
 FROM STREAM read_files(
-  '/Volumes/home_zach_jacobson/cdk/raw_data/invoice_pdfs/',
+  '/Volumes/${catalog}/${schema}/raw_data/invoice_pdfs/',
   format => 'binaryFile'
 );
