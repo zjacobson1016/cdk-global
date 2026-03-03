@@ -335,7 +335,7 @@ Below is a realistic multi-turn conversation showing how the Sunset CDJR account
 
 **AP Clerk (Maria):**
 
-> "Give me a summary of Delphi Technologies and Motorcraft OEM Supply invoices and list out each invoice_ids,manufacturers, and status that came in overnight."
+> "Give me a summary of Delphi Technologies and Motorcraft OEM Supply invoices and list out each invoice_ids,manufacturers, and status."
 
 The agent calls `get_invoice_summary` and returns a breakdown: 17 matched/auto-approved, 8 needing service manager review, 5 exception reviews, 2 PO-required, and 11 receiving reviews.
 
@@ -362,7 +362,7 @@ The agent processes **INV-00113** (invoice MAH-883132), a $66.20 order from **Ma
 
 **Service Manager (Dave):**
 
-> "I am the service manager can you show me my assigned invoices or any invoices that have exceptions."
+> "I am the service manager can you show me my assigned invoices."
 
 The agent maps his role to `SERVICE_MANAGER`, calls `get_pending_approvals_for_route`, and presents his queue: INV-00106 (Motorcraft, $3,994.89), INV-00140 (Motorcraft, $1,761.09), INV-00165 (Gates Corporation, $2,608.86), INV-00141 (Standard Motor Products, $1,411.92), and others — totaling over $12,000 across 8 invoices.
 
@@ -400,23 +400,12 @@ The agent calls `reject_invoice` with the reason, updates the log to REJECTED, a
 
 **Linda:**
 
-> "Approve INV-00117. I confirmed the Mahle Aftermarket order with the Quick Lane team — all $11,384.45 worth of filters checked out."
+> "SKIP"
 
 Approved, logged, Slack confirmation sent to `#ap-invoices`.
 
 ### End of day: AP Clerk wraps up
 
-**Maria:**
-
-> "How's our overall approval pipeline looking today?"
-
-The agent calls `get_approval_summary` and returns the day's totals by status and approval route across all processed invoices.
-
-**Maria:**
-
-> "Show me supplier performance for Delphi Technologies."
-
-The agent calls `get_supplier_performance` — Delphi has multiple invoices including INV-00150 ($1,634.88, 9.19% price variance) and INV-00129 ($649.38, auto-approved). Shows their overall match rate and average price variance.
 
 **Maria:**
 
@@ -426,7 +415,7 @@ The agent calls `get_approval_status` for INV-00150 — still PENDING in EXCEPTI
 
 **Maria:**
 
-> "What other invoices are stuck in exception review?"
+> "What invoices have changed in the past 8 hours?"
 
 The agent calls `get_invoices_by_route` with route EXCEPTION_REVIEW — shows INV-00100 (O'Reilly, $1,634.88, price mismatch 9.19%), INV-00132 (Dayco Products, $1,297.00, price mismatch 10.39%), INV-00108 (Mahle Aftermarket, $326.43, price mismatch 14.59%), INV-00146 (Continental AG Parts, $265.64, quantity mismatch of 2), INV-00093 (Bosch Automotive, $145.06, quantity mismatch of 1), and INV-00127 (Continental AG Parts, $136.51, price mismatch 11.04%).
 

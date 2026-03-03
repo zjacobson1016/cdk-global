@@ -15,7 +15,7 @@
 
 import os
 import mlflow
-from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction, DatabricksLakebase
+from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction, DatabricksLakebase, DatabricksGenieSpace
 from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
 from agent import AGENT, LLM_ENDPOINT
 
@@ -25,10 +25,13 @@ mlflow.set_registry_uri("databricks-uc")
 CATALOG = os.environ.get("CATALOG", "mfg_mc_se_sa")
 SCHEMA = os.environ.get("SCHEMA", "cdk")
 LAKEBASE_INSTANCE = os.environ.get("LAKEBASE_INSTANCE_NAME", "cdk-invoice-dev")
+GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "01f115d7a668194eba3e8bcf9297cc05")
 
 resources = [
     DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT),
     DatabricksLakebase(database_instance_name=LAKEBASE_INSTANCE),
+    DatabricksGenieSpace(genie_space_id=GENIE_SPACE_ID),
+    DatabricksFunction(function_name=f"{CATALOG}.{SCHEMA}._ask_invoice_genie_impl"),
 ]
 
 for tool in AGENT.uc_tools:

@@ -13,6 +13,8 @@ scripts:
     content: python3 scripts/02_generate_invoice_pdfs.py
   create_uc_functions:
     content: python3 src/uc_functions/create_functions.py
+  create_uc_functions_genie:
+    content: python3 src/uc_functions/create_functions_genie.py
   setup_lakebase:
     content: python3 scripts/03_create_approval_tables.py
   create_metric_views:

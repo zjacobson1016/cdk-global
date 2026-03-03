@@ -1,0 +1,12 @@
+resources:
+  apps:
+    parts_invoice_chat:
+      name: parts-invoice-chat-${bundle.target}
+      description: "Conversation UI for the Parts Invoice Processing Agent"
+      source_code_path: ../src/app
+      resources:
+        - name: serving-endpoint
+          description: "Parts Invoice Processing Agent endpoint"
+          serving_endpoint:
+            name: agents_mfg_mc_se_sa-cdk-parts_invoice_agent
+            permission: CAN_QUERY

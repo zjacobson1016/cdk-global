@@ -13,7 +13,7 @@
 from databricks import agents
 
 model_name = "mfg_mc_se_sa.cdk.parts_invoice_agent"
-version = "1"
+version = "5"
 
 print(f"Deploying {model_name} version {version}...")
 
