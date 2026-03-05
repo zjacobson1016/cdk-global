@@ -1,0 +1,30 @@
+resources:
+  model_serving_endpoints:
+    # ──────────────────────────────────────────────────────────────────────
+    # Provisioned Throughput endpoint for Llama 4 Maverick
+    #────────────────────────────────────────────────────
+    llama_pt_endpoint:
+      name: "${bundle.target}-llama-4-maverick-pt"
+      config:
+        served_entities:
+          - name: "llama-4-maverick-1"
+            entity_name: "system.ai.llama-4-maverick"
+            entity_version: "1"
+            workload_size: "Small"
+            workload_type: "CPU"
+            provisioned_model_units: 50
+            scale_to_zero_enabled: false
+        traffic_config:
+          routes:
+            - served_model_name: "llama-4-maverick-1"
+              traffic_percentage: 100
+      ai_gateway:
+        inference_table_config:
+          enabled: true
+          catalog_name: ${var.catalog}
+          schema_name: ${var.schema}
+          table_name_prefix: "pt_gateway2"
+        rate_limits:
+          - calls: 100
+            renewal_period: "minute"
+            key: "user"

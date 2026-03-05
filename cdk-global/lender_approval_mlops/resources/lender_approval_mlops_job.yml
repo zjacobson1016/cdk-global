@@ -1,4 +1,4 @@
-# Job 1: Initial setup — run once to bootstrap the project, then never again
+# Job 1: Initial setup — run once to bootstrap the project, then never again!
 # Job 2: Retraining & deployment — triggered on drift, retrains and deploys
 #         Deployment_job_trigger uses the job created by 03a_create_deployment_job (looked up by name at runtime)
 resources:

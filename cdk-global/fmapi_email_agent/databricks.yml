@@ -1,0 +1,29 @@
+bundle:
+  name: fmapi-email-agent
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: "main"
+  schema:
+    default: "default"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com
+    variables:
+      catalog: "mfg_mc_se_sa"
+      schema: "cdk"
+
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-mfg-mc-se-sa.cloud.databricks.com
+    variables:
+      catalog: "mfg_mc_se_sa"
+      schema: "cdk"
