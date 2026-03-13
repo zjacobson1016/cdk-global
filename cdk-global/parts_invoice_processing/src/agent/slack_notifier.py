@@ -10,13 +10,15 @@ AP_CHANNEL for accounts-payable confirmations.
 
 import logging
 import os
+import ssl
 from typing import Optional
 
+import certifi
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 logger = logging.getLogger(__name__)
-
+#Read slack token in from image file
 
 AP_CHANNEL = os.environ.get("SLACK_AP_CHANNEL", "#ap-invoices")
 
@@ -42,7 +44,8 @@ def _get_client() -> Optional[WebClient]:
     if not SLACK_BOT_TOKEN:
         logger.warning("SLACK_BOT_TOKEN not set – Slack notifications disabled")
         return None
-    return WebClient(token=SLACK_BOT_TOKEN)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    return WebClient(token=SLACK_BOT_TOKEN, ssl=ssl_context)
 
 
 def _fmt_currency(amount) -> str:

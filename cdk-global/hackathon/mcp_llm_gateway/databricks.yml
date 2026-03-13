@@ -1,0 +1,13 @@
+bundle:
+  name: mcp-llm-gateway
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://dbc-803f5f66-d3ae.cloud.databricks.com
+      profile: dbc-803f5f66-d3ae

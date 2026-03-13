@@ -1,0 +1,3 @@
+fastmcp
+databricks-sdk
+uvicorn[standard]>=0.30.0

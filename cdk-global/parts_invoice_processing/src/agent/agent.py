@@ -21,8 +21,13 @@ from mlflow.types.responses import (
     output_to_responses_items_stream,
     to_chat_completions_input,
 )
-from databricks_langchain import ChatDatabricks, UCFunctionToolkit
+os.environ.setdefault("DATABRICKS_CONFIG_PROFILE", "group-demo")
+
+from databricks.sdk import WorkspaceClient
+from databricks_langchain import ChatDatabricks, DatabricksFunctionClient, UCFunctionToolkit, set_uc_function_client
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+set_uc_function_client(DatabricksFunctionClient(client=WorkspaceClient()))
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
