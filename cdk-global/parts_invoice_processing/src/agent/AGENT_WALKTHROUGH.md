@@ -341,14 +341,13 @@ The agent calls `get_invoice_summary` and returns a breakdown: 17 matched/auto-a
 
 **Maria:**
 
-> "Process invoice INV-00106 for approval."
+> "Process invoice INV-00106 to service manager for approval and process INV-00150 to exceptions review"
 
 The agent runs the full 4-step pipeline: looks up **INV-00106** (invoice MOT-211090, a $3,994.89 order from **Motorcraft OEM Supply** for the Service department), classifies it as **STANDARD** (matched, no price or quantity variance), runs the 3-way match (PASS — quantities and prices align, receiving confirmed), and submits it for **SERVICE_MANAGER** approval. Slack notification goes to `#service-approvals`.
 
 **Maria:**
 
-> "Whats the approval route on INV-00150, that one had a quantity mismatch."
-> "Change the routing to SERVICE_MANAGER"
+> "Skip"
 
 The agent looks it up — **INV-00100** (invoice O'R-447704), a $1,634.88 order from **O'Reilly Auto Parts** for the Service department. Price variance is **9.19%** above the PO. Classifies it as **DISCREPANCY**, match analysis returns FAIL on price (PRICE_MISMATCH), and routes it to **EXCEPTION_REVIEW**. Slack goes to `#exception-review` with the variance details.
 
@@ -362,7 +361,7 @@ The agent processes **INV-00113** (invoice MAH-883132), a $66.20 order from **Ma
 
 **Service Manager (Dave):**
 
-> "I am the service manager can you show me my assigned invoices."
+> "I am the service manager can you show me my assigned invoices, also show me any in exception reviews."
 
 The agent maps his role to `SERVICE_MANAGER`, calls `get_pending_approvals_for_route`, and presents his queue: INV-00106 (Motorcraft, $3,994.89), INV-00140 (Motorcraft, $1,761.09), INV-00165 (Gates Corporation, $2,608.86), INV-00141 (Standard Motor Products, $1,411.92), and others — totaling over $12,000 across 8 invoices.
 
@@ -388,7 +387,7 @@ The agent calls `escalate_invoice`, marks Dave's entry as ESCALATED, creates a n
 
 **Parts Director (Linda):**
 
-> "I'm the Parts Director. Show me my pending approvals."
+> "I'm the General Manager. Show me my pending approvals."
 
 The agent shows 2 items: **INV-00150** (escalated from Dave — Delphi Technologies, $2,289.07, quantity mismatch of 1 unit in Quick Lane) and **INV-00117** (Mahle Aftermarket, $11,384.45, matched but over $5K threshold, Quick Lane department).
 
@@ -410,6 +409,7 @@ Approved, logged, Slack confirmation sent to `#ap-invoices`.
 **Maria:**
 
 > "Check the status of INV-00150. Did the exception review team handle that Delphi quantity mismatch yet?"
+> "Check the status of INV-00106. Did the exception review team handle that Delphi quantity mismatch yet?"
 
 The agent calls `get_approval_status` for INV-00150 — still PENDING in EXCEPTION_REVIEW. The 9.19% price variance on the $1,634.88 O'Reilly invoice hasn't been acted on yet.
 

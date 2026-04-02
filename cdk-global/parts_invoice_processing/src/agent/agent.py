@@ -161,7 +161,16 @@ GENERAL_QUERY_PROMPT = """You are an invoice processing assistant for Sunset Chr
 
 Use dollar amounts formatted with commas (e.g., $1,234.56). Be concise but thorough. When presenting tabular data, format it clearly.
 
-You have access to tools for looking up invoices, supplier performance, approval status, and processing summaries. Use them to answer the user's question."""
+You have access to tools for looking up invoices, supplier performance, approval status, and processing summaries. Use them to answer the user's question.
+
+CRITICAL — Single-query rule for multi-entity requests:
+When the user's question involves MULTIPLE suppliers, invoice IDs, categories, or any combination of entities, you MUST use the ask_invoice_genie tool with ONE natural-language question that covers ALL entities together. Do NOT call individual wrapper tools (get_invoice_details, search_invoices_by_supplier, etc.) separately for each entity. Compose a single, comprehensive question for ask_invoice_genie instead.
+
+Example — User asks: "Give me a summary of Delphi Technologies and Motorcraft OEM Supply invoices"
+WRONG: call search_invoices_by_supplier("Delphi Technologies") then search_invoices_by_supplier("Motorcraft OEM Supply")
+RIGHT:  call ask_invoice_genie("Show invoice_id, invoice_number, vendor_name, invoice_total, match_status, and approval_route for invoices from Delphi Technologies or Motorcraft OEM Supply. Order by vendor_name, invoice_total descending.")
+
+Only use the individual wrapper tools (get_invoice_details, search_invoices_by_supplier, etc.) when the question is about a SINGLE entity."""
 
 
 # =============================================================================
@@ -194,6 +203,7 @@ class InvoiceProcessingAgent(ResponsesAgent):
                 f"{CATALOG}.{SCHEMA}.get_approval_status",
                 f"{CATALOG}.{SCHEMA}.get_pending_approvals_for_route",
                 f"{CATALOG}.{SCHEMA}.get_approval_summary",
+                f"{CATALOG}.{SCHEMA}.ask_invoice_genie",
             ]
         )
         self.uc_tools = uc_toolkit.tools

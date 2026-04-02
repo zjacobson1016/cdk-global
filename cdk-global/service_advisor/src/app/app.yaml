@@ -1,0 +1,13 @@
+command:
+  - "gunicorn"
+  - "app:app"
+  - "-w"
+  - "4"
+  - "-b"
+  - "0.0.0.0:8000"
+  - "--timeout"
+  - "300"
+
+env:
+  - name: SERVING_ENDPOINT_NAME
+    value: "agents_mfg_mc_se_sa-cdk_service-service_advisor_agent"

@@ -1,0 +1,64 @@
+# Service Advisor Agent - End-to-End Workflow
+# Data generation -> SDP pipeline -> UC functions -> Agent log & deploy
+resources:
+  jobs:
+    service_advisor:
+      name: "[${bundle.target}] service_advisor - End-to-End"
+      budget_policy_id: ${var.budget_policy_id}
+      tags:
+        project: "service_advisor"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "4"
+            dependencies:
+              - mlflow==3.6.0
+              - databricks-langchain
+              - langgraph==0.3.4
+              - pydantic
+              - databricks-agents
+              - faker
+              - "psycopg[binary]>=3.0"
+
+      tasks:
+        - task_key: generate_data
+          environment_key: default
+          spark_python_task:
+            python_file: ../scripts/01_generate_synthetic_data.py
+            source: WORKSPACE
+
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: generate_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.service_advisor_pipeline.id}
+            full_refresh: true
+
+        - task_key: create_uc_functions
+          depends_on:
+            - task_key: run_pipeline
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/uc_functions/create_functions.py
+            source: WORKSPACE
+
+        - task_key: log_model
+          depends_on:
+            - task_key: create_uc_functions
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/agent/log_model.py
+            source: WORKSPACE
+
+        - task_key: deploy_agent
+          depends_on:
+            - task_key: log_model
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/agent/deploy_agent.py
+            source: WORKSPACE
+
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
