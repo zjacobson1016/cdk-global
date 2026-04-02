@@ -1,7 +1,7 @@
 # Databricks notebook source
 # COMMAND ----------
 
-import dlt
+from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
 # COMMAND ----------
@@ -14,16 +14,10 @@ from pyspark.sql import functions as F
 
 # COMMAND ----------
 
-# Get pipeline configuration
-import os
-from dotenv import load_dotenv
-env_path = "/Workspace/Users/zach.jacobson@databricks.com/.bundle/new_product_feedback_categorization/dev/files/.env"
-load_dotenv(dotenv_path=env_path, override=True)
-
-# Configurable volume locations for Auto Loader ingestion
-catalog_name = os.getenv("CATALOG_NAME", "mfg_mc_se_sa")
-schema_name = os.getenv("SCHEMA_NAME", "cdk")
-volume_name = os.getenv("VOLUME_FOLDER_NAME", "survey_responses")
+# Get pipeline configuration from Databricks widgets/job parameters
+catalog_name = "mfg_mc_se_sa"
+schema_name = "cdk"
+volume_name = "survey_responses"
 
 # Source path for Qualtrics survey responses
 VOLUME_BASE_PATH = f"/Volumes/{catalog_name}/{schema_name}/{volume_name}"
@@ -43,7 +37,7 @@ print(f"Qualtrics source path: {QUALTRICS_RESPONSES_SOURCE_PATH}")
 
 # COMMAND ----------
 
-@dlt.table(
+@dp.table(
     name="bronze_qualtrics_survey_responses",
     comment="Raw Qualtrics new product survey customer responses ingested from JSON files via Auto Loader. Full JSON payload stored as VARIANT.",
     table_properties={
@@ -96,7 +90,7 @@ def bronze_qualtrics_survey_responses():
 # AI Model endpoint for sentiment analysis
 AI_MODEL_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
 
-@dlt.table(
+@dp.table(
     name="silver_survey_responses",
     comment="Structured survey responses with AI-derived sentiment classification",
     table_properties={
@@ -150,7 +144,7 @@ def silver_survey_responses():
         )
     
     # Start with the bronze stream
-    df = dlt.read_stream("bronze_qualtrics_survey_responses")
+    df = dp.read_stream("bronze_qualtrics_survey_responses")
     
     # Extract response metadata - these are direct STRING fields in result object
     df = (
@@ -302,3 +296,154 @@ def silver_survey_responses():
             "ai_derived_sentiment",
             "processed_at"
         )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Silver Layer - AI-Parsed Survey Responses (responseFormat)
+# MAGIC 
+# MAGIC Alternative silver layer that uses `ai_query` with `responseFormat` to parse
+# MAGIC the raw VARIANT payload into a structured schema in a single LLM call.
+# MAGIC This replaces manual regex-based Python dict-to-JSON conversion and
+# MAGIC field-by-field VARIANT extraction with AI-driven structured output.
+
+# COMMAND ----------
+
+AI_MODEL_ENDPOINT_V2 = "databricks-llama-4-maverick"
+
+RESPONSE_FORMAT_JSON = (
+    '{"type": "json_schema", '
+    '"json_schema": {'
+    '"name": "survey_extraction", '
+    '"schema": {'
+    '"type": "object", '
+    '"properties": {'
+    '"response_id": {"type": "string"}, '
+    '"survey_id": {"type": "string"}, '
+    '"response_status": {"type": "string"}, '
+    '"distribution_channel": {"type": "string"}, '
+    '"start_date": {"type": "string"}, '
+    '"end_date": {"type": "string"}, '
+    '"recorded_date": {"type": "string"}, '
+    '"duration_seconds": {"type": "string"}, '
+    '"external_customer_id": {"type": "string"}, '
+    '"respondent_email": {"type": "string"}, '
+    '"respondent_first_name": {"type": "string"}, '
+    '"respondent_last_name": {"type": "string"}, '
+    '"respondent_city": {"type": "string"}, '
+    '"respondent_state": {"type": "string"}, '
+    '"respondent_country": {"type": "string"}, '
+    '"customer_segment": {"type": "string"}, '
+    '"product_interest": {"type": "string"}, '
+    '"account_id": {"type": "string"}, '
+    '"sales_rep_id": {"type": "string"}, '
+    '"campaign_source": {"type": "string"}, '
+    '"product_awareness_source": {"type": "string"}, '
+    '"purchase_intent": {"type": "string"}, '
+    '"purchase_intent_score": {"type": "string"}, '
+    '"nps_score": {"type": "string"}, '
+    '"nps_category": {"type": "string"}, '
+    '"price_perception_score": {"type": "string"}, '
+    '"competitor_comparison": {"type": "string"}, '
+    '"competitor_comparison_score": {"type": "string"}, '
+    '"open_feedback": {"type": "string"}, '
+    '"purchase_timeline": {"type": "string"}, '
+    '"follow_up_consent": {"type": "string"}, '
+    '"calculated_sentiment_score": {"type": "string"}, '
+    '"purchase_readiness_score": {"type": "string"}, '
+    '"predicted_customer_segment": {"type": "string"}, '
+    '"ai_derived_sentiment": {"type": "string"}'
+    '}}, "strict": true}}'
+)
+
+PARSE_SCHEMA = (
+    "STRUCT<"
+    "response_id: STRING, survey_id: STRING, response_status: STRING, "
+    "distribution_channel: STRING, start_date: STRING, end_date: STRING, "
+    "recorded_date: STRING, duration_seconds: STRING, external_customer_id: STRING, "
+    "respondent_email: STRING, respondent_first_name: STRING, respondent_last_name: STRING, "
+    "respondent_city: STRING, respondent_state: STRING, respondent_country: STRING, "
+    "customer_segment: STRING, product_interest: STRING, account_id: STRING, "
+    "sales_rep_id: STRING, campaign_source: STRING, product_awareness_source: STRING, "
+    "purchase_intent: STRING, purchase_intent_score: STRING, nps_score: STRING, "
+    "nps_category: STRING, price_perception_score: STRING, competitor_comparison: STRING, "
+    "competitor_comparison_score: STRING, open_feedback: STRING, purchase_timeline: STRING, "
+    "follow_up_consent: STRING, calculated_sentiment_score: STRING, "
+    "purchase_readiness_score: STRING, predicted_customer_segment: STRING, "
+    "ai_derived_sentiment: STRING>"
+)
+
+@dp.table(
+    name="silver_survey_responses_ai_parsed",
+    comment="Survey responses parsed via ai_query with responseFormat. "
+            "Uses structured output to extract all fields from the raw VARIANT payload in a single LLM call, "
+            "replacing manual regex conversion and field-by-field extraction.",
+    table_properties={
+        "quality": "silver",
+        "pipelines.autoOptimize.managed": "true",
+        "delta.feature.variantType-preview" : "supported"
+    }
+)
+def silver_survey_responses_ai_parsed():
+    """
+    Parse bronze VARIANT payload into structured columns using ai_query with responseFormat.
+
+    Mirrors the tested SQL query: passes response_payload directly to ai_query with
+    a json_schema responseFormat, then parses the JSON string output into typed columns.
+    """
+    df = spark.readStream.table("bronze_qualtrics_survey_responses")
+
+    df = df.withColumn(
+        "ai_response",
+        F.expr(f"""
+            ai_query(
+                '{AI_MODEL_ENDPOINT_V2}',
+                concat('Extract all fields from this survey response payload. For ai_derived_sentiment, classify as POSITIVE, NEUTRAL, or NEGATIVE.\\n\\n', response_payload),
+                responseFormat => '{RESPONSE_FORMAT_JSON}',
+                modelParameters => named_struct('max_tokens', 4096, 'temperature', 0.1)
+            )
+        """)
+    )
+
+    df = df.withColumn("parsed", F.from_json(F.col("ai_response"), PARSE_SCHEMA))
+
+    return df.select(
+        F.col("parsed.response_id").alias("response_id"),
+        F.col("parsed.survey_id").alias("survey_id"),
+        F.col("parsed.response_status").alias("response_status"),
+        F.col("parsed.distribution_channel").alias("distribution_channel"),
+        F.to_timestamp(F.col("parsed.start_date")).alias("survey_start_date"),
+        F.to_timestamp(F.col("parsed.end_date")).alias("survey_end_date"),
+        F.to_timestamp(F.col("parsed.recorded_date")).alias("recorded_date"),
+        F.col("parsed.duration_seconds").cast("int").alias("duration_seconds"),
+        F.col("parsed.external_customer_id").alias("external_customer_id"),
+        F.col("parsed.respondent_email").alias("respondent_email"),
+        F.col("parsed.respondent_first_name").alias("respondent_first_name"),
+        F.col("parsed.respondent_last_name").alias("respondent_last_name"),
+        F.col("parsed.respondent_city").alias("respondent_city"),
+        F.col("parsed.respondent_state").alias("respondent_state"),
+        F.col("parsed.respondent_country").alias("respondent_country"),
+        F.col("parsed.customer_segment").alias("customer_segment"),
+        F.col("parsed.product_interest").alias("product_interest"),
+        F.col("parsed.account_id").alias("account_id"),
+        F.col("parsed.sales_rep_id").alias("sales_rep_id"),
+        F.col("parsed.campaign_source").alias("campaign_source"),
+        F.col("parsed.product_awareness_source").alias("product_awareness_source"),
+        F.col("parsed.purchase_intent").alias("purchase_intent"),
+        F.col("parsed.purchase_intent_score").cast("int").alias("purchase_intent_score"),
+        F.col("parsed.nps_score").cast("int").alias("nps_score"),
+        F.col("parsed.nps_category").alias("nps_category"),
+        F.col("parsed.price_perception_score").cast("int").alias("price_perception_score"),
+        F.col("parsed.competitor_comparison").alias("competitor_comparison"),
+        F.col("parsed.competitor_comparison_score").cast("int").alias("competitor_comparison_score"),
+        F.col("parsed.open_feedback").alias("open_feedback"),
+        F.col("parsed.purchase_timeline").alias("purchase_timeline"),
+        F.when(F.col("parsed.follow_up_consent").isin("true", "True", "Yes"), True)
+         .when(F.col("parsed.follow_up_consent").isin("false", "False", "No"), False)
+         .alias("follow_up_consent"),
+        F.col("parsed.calculated_sentiment_score").cast("double").alias("calculated_sentiment_score"),
+        F.col("parsed.purchase_readiness_score").cast("int").alias("purchase_readiness_score"),
+        F.col("parsed.predicted_customer_segment").alias("predicted_customer_segment"),
+        F.col("parsed.ai_derived_sentiment").alias("ai_derived_sentiment"),
+        F.current_timestamp().alias("processed_at")
+    )

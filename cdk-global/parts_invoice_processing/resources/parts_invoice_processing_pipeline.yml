@@ -1,0 +1,31 @@
+# Spark Declarative Pipeline: bronze → silver → gold for parts invoice processing
+resources:
+  pipelines:
+    parts_invoice_processing_pipeline:
+      name: "[${bundle.target}] parts_invoice_processing_etl"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      serverless: true
+      development: true
+      continuous: false
+      photon: true
+      channel: preview
+      edition: ADVANCED
+
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+
+      libraries:
+        - file:
+            path: ../src/pipelines/01_bronze.sql
+        - file:
+            path: ../src/pipelines/02_silver.sql
+        - file:
+            path: ../src/pipelines/03_gold.sql
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"
+        - level: CAN_RUN
+          group_name: "users"

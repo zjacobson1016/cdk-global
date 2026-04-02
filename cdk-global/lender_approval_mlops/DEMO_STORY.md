@@ -18,7 +18,7 @@ CDK Global processes millions of auto loan applications annually across its deal
 | **Stale models** | Retraining happens quarterly at best | Model accuracy degrades as market shifts |
 | **No self-service analytics** | F&I managers can't answer their own data questions | Every question requires a data team ticket |
 
-**What if a dealer's F&I manager could ask a single system**: *"Score this application, find me the best lender rate, and show me our approval trends this month"* — and get an answer in seconds?
+**What if a dealer's F&I manager could ask a single system**: *"Ask questions about customer lender profile natural language,Gain insights into customer profile metric compared to lender standards, Score this application, find me the best lender rate, and show me our approval trends this month"* — and get an answer in seconds?
 
 That's what we're building.
 
@@ -28,7 +28,7 @@ That's what we're building.
 
 ```
                          ┌─────────────────────────────────────────────────┐
-                         │        CDK Lending Supervisor (MAS)             │
+                         │        CDK Lending Supervisor (MAS) in Web App             │
                          │   "Route my question to the right agent"        │
                          └──────┬──────────────┬──────────────┬────────────┘
                                 │              │              │
@@ -99,7 +99,8 @@ Set the scene: *You're Sarah, an F&I manager at a high-volume dealership in Dall
 
 **Turn 1** — Sarah checks the landscape *(routes to Lending Analytics / Genie)*:
 
-> *"How are our approval rates looking across credit tiers this month? I want to know where we stand before I start working this deal."*
+> *"What are the approval rates by credit tier for the most recent month available?" I want to know where we stand before I start working this deal."*
+> *Can you provide the total credit_score for application_id APP-000010 from the feature store*
 
 The supervisor recognizes this as a data question and routes it to the **Lending Analytics** agent (a Genie Space). Genie translates the question to SQL, queries `gold_lender_features`, and returns:
 
@@ -117,7 +118,7 @@ Sarah sees that near-prime borrowers are getting approved almost 90% of the time
 
 **Turn 2** — Sarah runs the application through the model *(routes to Loan Approval / ML Model)*:
 
-> *"Great. I just submitted this customer's application — it's APP-000001. Can you score it?"*
+> *"Great. I just submitted this customer's application — it's APP-000010. Can you score it?"*
 
 The conversation continues naturally. The supervisor recognizes the application ID and routes to the **Loan Approval** agent, which calls the `predict_loan_approval` UC function — a wrapper around the real-time model serving endpoint:
 
@@ -138,7 +139,8 @@ Sarah sees the approval instantly: 83.6% confidence, income verified against the
 
 **Turn 3** — Sarah shops for the best rate *(routes to Lender Shopping / shop_lenders)*:
 
-> *"Perfect — approved. Now find me the best rates. He's got a 720 credit score, $65K income, looking at a $35K loan, 60-month term, 2024 model year."*
+> *"Perfect — approved. Now find me the best rates for this applicant?"*
+> *"Assume values of loan term: 60 months and model year: 2025"*
 
 Without leaving the conversation, the supervisor routes to the **Lender Shopping** agent, which calls the `shop_lenders` UC function across 20 programs from 8 lenders:
 
@@ -287,6 +289,75 @@ bronze_photo_ids    ───┘     (3-way LEFT JOIN        (feature engineerin
 ### Act 3: The ML System — From Features to Decisions
 
 > **Key message**: *The model is just one piece. The real value is the system around it.*
+
+#### How the ML Tables Fit Together
+
+Seven tables form the backbone of the ML system. Each serves a distinct purpose, and they connect through `application_id` and `transaction_ts`:
+
+```
+                        gold_lender_features
+                        (SDP pipeline output)
+                                │
+                    ┌───────────┼───────────┐
+                    ▼                       ▼
+          feature_table              label_table
+          ─────────────              ───────────
+          All gold columns           application_id
+          registered in              approved (target)
+          Feature Store              split (train/test)
+          PK: application_id         ─────────┬─────
+              transaction_ts                  │
+            ┌───────┤                         │
+            │       │                         │
+            ▼       │                         │
+    online_feature  │                         │
+    _table          │                         │
+    ────────────    │                         │
+    Synced copy     │       ┌─────────────────┘
+    for real-time   │       │
+    serving         │       ▼
+    (Online Store)  │   app_ids_table
+                    │   ─────────────
+                    │   application_id    ◄── Filtered to split='test'
+                    │   transaction_ts        from label_table
+                    │   split
+                    │       │
+                    │       │  fe.score_batch
+                    │       │  (point-in-time join
+                    │       │   against feature_table)
+                    │       ▼
+                    │   offline_inference_table
+                    │   ───────────────────────
+                    │   application_id, prediction
+                    │   income_check, id_check
+                    │   decision_reason, model_version
+                    │       │
+                    │       │  LEFT JOIN on application_id
+                    │       │  + label_table.approved
+                    │       ▼
+                    │   inference_table  ◄──── Lakehouse Monitoring
+                    │   ───────────────        attaches here
+                    │   predictions + labels
+                    │   (unified view)
+                    │       │
+                    │       │  Filtered to split='test'
+                    │       │  + sampled (LIMIT 1000)
+                    │       ▼
+                    └─► baseline_table
+                        ──────────────
+                        Reference distribution
+                        for drift detection
+```
+
+| Table | Created By | Purpose | Key Relationship |
+|---|---|---|---|
+| **feature_table** | `01_feature_engineering` | Feature Store — all ML features with point-in-time keys | Source: `gold_lender_features` |
+| **label_table** | `01_feature_engineering` | Ground truth labels + train/test split | Joined to features by `application_id` + `transaction_ts` |
+| **app_ids_table** | `01_feature_engineering` | Test-split IDs for batch scoring | Subset of `label_table` where `split='test'` |
+| **online_feature_table** | `06_serve_features` | Online Store sync of feature_table | Published from `feature_table` for real-time lookup |
+| **offline_inference_table** | `05_batch_inference` | Batch predictions with reasoning | `app_ids_table` scored via `fe.score_batch` against `feature_table` |
+| **inference_table** | `07_model_monitoring` | Predictions + labels for monitoring | `offline_inference_table` LEFT JOIN `label_table` |
+| **baseline_table** | `07_model_monitoring` | Reference distribution for drift | Subset of `inference_table` (test split, 1000 rows) |
 
 #### Scene 7: Feature Engineering with Feature Store
 

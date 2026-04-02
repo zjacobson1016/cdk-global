@@ -1,0 +1,51 @@
+# Databricks Asset Bundle - Service Advisor Agent
+# Synthetic data → UC Volume → SDP (bronze/silver/gold) → UC Functions → Lakebase → Agent deployment
+
+bundle:
+  name: service_advisor
+
+include:
+  - resources/*.yml
+
+scripts:
+  generate_synthetic_data:
+    content: python3 scripts/01_generate_synthetic_data.py
+  create_uc_functions:
+    content: python3 src/uc_functions/create_functions.py
+  setup_lakebase:
+    content: python3 scripts/02_create_assignment_tables.py
+
+variables:
+  catalog:
+    description: "Unity Catalog catalog for tables, volumes, and functions"
+    default: "mfg_mc_se_sa"
+  schema:
+    description: "Schema for pipeline tables and raw_data volume"
+    default: "cdk_service"
+  warehouse_id:
+    description: "SQL Warehouse ID for SQL tasks"
+    default: "bce0a02b2be86f1b"
+  budget_policy_id:
+    description: "Budget policy ID for cost attribution"
+    default: "5b1cd9b7-9295-45e7-aab7-d7942bd4dfa3"
+  lakebase_instance:
+    description: "Lakebase Provisioned instance name for technician assignment tracking"
+    default: "cdk-service-dev"
+  lakebase_database:
+    description: "PostgreSQL database name within the Lakebase instance"
+    default: "databricks_postgres"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: group-demo
+
+  prod:
+    mode: production
+    workspace:
+      profile: group-demo
+      root_path: /Shared/.bundle/prod/${bundle.name}
+    run_as:
+      user_name: zach.jacobson@databricks.com

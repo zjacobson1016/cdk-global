@@ -1,0 +1,18 @@
+resources:
+  apps:
+    service_advisor_chat_dev:
+      name: aiva-service-advisor-chat-dev
+      description: Conversation UI for the Service Advisor Agent
+      source_code_path: ../src/app
+      resources:
+        - description: Service Advisor Agent endpoint
+          name: serving-endpoint
+          serving_endpoint:
+            name: agents_mfg_mc_se_sa-cdk_service-service_advisor_agent
+            permission: CAN_QUERY
+    
+        - genie_space:
+            name: Automotive Service & Technician Performance
+            permission: CAN_EDIT
+            space_id: 01f12d1283e116888a546c7051d24358
+          name: genie-space

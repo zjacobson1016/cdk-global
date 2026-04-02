@@ -4,12 +4,15 @@ resources:
     new_product_feedback_categorization_pipeline:
       name: new_product_feedback_categorization_pipeline
       budget_policy_id: ${var.budget_policy_id}
-      environment:
-        dependencies: ["-r ${workspace.file_path}/src/requirements_model.txt"]
+      # environment:
+      #   dependencies: ["-r ${workspace.file_path}/src/requirements_model.txt"]
       # Pipeline configuration
       configuration:
         catalog: ${var.catalog}
         schema: ${var.schema}
+        CATALOG_NAME: ${var.catalog}
+        SCHEMA_NAME: ${var.schema}
+        VOLUME_FOLDER_NAME: "survey_responses"
 
 
       # Pipeline libraries (notebooks or Python files)

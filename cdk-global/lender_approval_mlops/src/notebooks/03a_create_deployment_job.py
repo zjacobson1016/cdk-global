@@ -162,6 +162,32 @@ except mlflow.exceptions.RestException as e:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Run the Deployment Job
+
+# COMMAND ----------
+
+import time
+
+run = w.jobs.run_now(job_id=job_id)
+print(f"Triggered run {run.run_id} for job '{job_name}' (ID: {job_id})")
+print(f"Run URL: {w.config.host}#job/{job_id}/run/{run.run_id}")
+
+run_result = w.jobs.get_run(run.run_id)
+while run_result.state.life_cycle_state in ("PENDING", "RUNNING", "QUEUED"):
+    print(f"  Run state: {run_result.state.life_cycle_state}...")
+    time.sleep(30)
+    run_result = w.jobs.get_run(run.run_id)
+
+if run_result.state.result_state == jobs.RunResultState.SUCCESS:
+    print(f"Run {run.run_id} completed successfully.")
+else:
+    print(f"Run {run.run_id} finished with state: {run_result.state.result_state}")
+    if run_result.state.state_message:
+        print(f"  Message: {run_result.state.state_message}")
+
+# COMMAND ----------
+
 print(f"Done. Deployment job '{job_name}' (ID: {job_id}) is linked to UC model '{model_name}'.")
 print(f"\nDocumentation:")
 print(f"  AWS:   https://docs.databricks.com/aws/mlflow/deployment-job#connect")
