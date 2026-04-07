@@ -17,7 +17,7 @@ import certifi
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)e
 #Read slack token in from image file
 
 AP_CHANNEL = os.environ.get("SLACK_AP_CHANNEL", "#ap-invoices")

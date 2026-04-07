@@ -1,0 +1,56 @@
+bundle:
+  name: agent_langgraph_combined_memory
+
+resources:
+  apps:
+    agent_langgraph_combined_memory:
+      name: "agent-langgraph-combined-mem"
+      description: "LangGraph agent with both short-term (conversation history) and long-term (cross-session facts) memory"
+      source_code_path: ./
+      config:
+        command: ["uv", "run", "start-app"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "databricks"
+          - name: MLFLOW_REGISTRY_URI
+            value: "databricks-uc"
+          - name: API_PROXY
+            value: "http://localhost:8000/invocations"
+          - name: CHAT_APP_PORT
+            value: "3000"
+          - name: CHAT_PROXY_TIMEOUT_SECONDS
+            value: "300"
+          - name: MLFLOW_EXPERIMENT_ID
+            value_from: "experiment"
+          - name: LAKEBASE_AUTOSCALING_PROJECT
+            value: "cdk-service-dev"
+          - name: LAKEBASE_AUTOSCALING_BRANCH
+            value: "production"
+
+      resources:
+        - name: "experiment"
+          experiment:
+            experiment_id: "1122835333765381"
+            permission: "CAN_MANAGE"
+        # Add postgres resource via UI after deployment
+        # - name: "postgres"
+        #   postgres:
+        #     branch: "projects/cdk-service-dev/branches/production"
+        #     database: "projects/cdk-service-dev/branches/production/databases/databricks_postgres"
+        #     permission: "CAN_CONNECT_AND_CREATE"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: group-demo
+
+  prod:
+    mode: production
+    # workspace:
+    #   host: https://...
+    resources:
+      apps:
+        agent_langgraph_combined_memory:
+          name: agent-langgraph-combined-mem

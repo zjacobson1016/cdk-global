@@ -1,0 +1,12 @@
+bundle:
+  name: service-advisor-context-mgmt
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: group-demo

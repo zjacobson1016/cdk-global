@@ -1,0 +1,6 @@
+resources:
+  apps:
+    service_advisor_context_app:
+      name: cdk-service-advisor-ctx-${bundle.target}
+      description: "Service Advisor Context Management Demo - shows how page context flows to a chatbot agent per page"
+      source_code_path: ../src/app
