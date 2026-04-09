@@ -1,0 +1,6 @@
+resources:
+  apps:
+    selector_app:
+      name: mcp-selector-${bundle.target}
+      description: "Streamlit app for selecting and deploying bundled MCP servers"
+      source_code_path: ../src/selector_app

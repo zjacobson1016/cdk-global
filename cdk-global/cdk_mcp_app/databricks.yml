@@ -1,5 +1,5 @@
 bundle:
-  name: service-advisor-context-mgmt
+  name: cdk-mcp-app
 
 include:
   - resources/*.yml
