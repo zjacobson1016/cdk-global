@@ -1,98 +1,50 @@
-"""MCP Server Registry — Streamlit UI.
+"""CDK MCP Tool Selector — Streamlit UI.
 
-Browse ALL HTTP connections (MCP servers and REST APIs) in one unified view.
-MCP servers are deployed via the bundled MCP proxy app. REST API connections
-are proxied via Unity Catalog connection proxy endpoints.
+Browse APIs defined in api_config.yaml, select endpoints to deploy as
+individual MCP tools, and deploy them to the MCP proxy app.
 """
 
 import io
 import json
 import os
+from pathlib import Path
 
 import streamlit as st
+import yaml
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.core import Config
 from databricks.sdk.service.apps import AppDeployment
-from databricks.sdk.service.catalog import ConnectionType
 from databricks.sdk.service.workspace import ImportFormat
 
-MCP_PROXY_APP_NAME = os.environ.get("MCP_PROXY_APP_NAME", "mcp-proxy-dev")
+MCP_PROXY_APP_NAME = os.environ.get("MCP_PROXY_APP_NAME", "mcp-proxy-dev-zach")
 PROXY_SOURCE_PATH = os.environ.get(
     "MCP_PROXY_SOURCE_PATH",
-    "/Workspace/Users/zach.jacobson@databricks.com/.bundle/cdk-mcp-app/dev/files/src/mcp_proxy_app",
+    "/Workspace/Users/zachary.jacobson@cdk.com/.bundle/cdk-mcp-app/dev/files/src/mcp_proxy_app",
 )
-
-AUTH_TYPE_OPTIONS = [
-    "Bearer Token",
-    "OAuth Machine to Machine",
-    "OAuth User to Machine Shared",
-    "OAuth User to Machine Per User",
-]
-
-AUTH_TYPE_KEYS = {
-    "Bearer Token": "bearer",
-    "OAuth Machine to Machine": "oauth_m2m",
-    "OAuth User to Machine Shared": "oauth_u2m_shared",
-    "OAuth User to Machine Per User": "oauth_u2m_per_user",
-}
-
-OAUTH_PROVIDERS = [
-    "Manual configuration",
-]
-
-CREDENTIAL_EXCHANGE_METHODS = {
-    "header_and_body": "Header & Body (default)",
-    "body_only": "Body Only",
-    "header_only": "Header Only (e.g. OKTA)",
-}
+CONFIG_FILE = Path(__file__).parent / "api_config.yaml"
 
 
-@st.cache_resource
 def get_workspace_client() -> WorkspaceClient:
-    return WorkspaceClient(config=Config())
+    return WorkspaceClient(
+        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
+        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
+    )
+
+
+def load_api_config() -> list[dict]:
+    """Load API definitions from api_config.yaml."""
+    if not CONFIG_FILE.exists():
+        return []
+    with open(CONFIG_FILE) as f:
+        data = yaml.safe_load(f)
+    return data.get("apis", [])
 
 
 # ---------------------------------------------------------------------------
-# Browse helpers
+# Deploy helpers
 # ---------------------------------------------------------------------------
-def list_all_http_servers(w: WorkspaceClient) -> list[dict]:
-    """Return ALL HTTP connections, tagged as 'mcp' or 'rest'."""
-    servers = []
-    for conn in w.connections.list():
-        if conn.connection_type and conn.connection_type.value == "HTTP":
-            opts = conn.options or {}
-            is_mcp = opts.get("is_mcp_connection") == "true"
-            first_line = ""
-            if conn.comment:
-                for line in conn.comment.splitlines():
-                    stripped = line.strip().strip("#").strip()
-                    if stripped:
-                        first_line = stripped
-                        break
-            servers.append({
-                "name": conn.name,
-                "host": opts.get("host", ""),
-                "base_path": opts.get("base_path", ""),
-                "comment": first_line,
-                "owner": conn.owner or "",
-                "type": "mcp" if is_mcp else "rest",
-            })
-    servers.sort(key=lambda c: c["name"])
-    return servers
 
-
-def _list_all_http_connections(w: WorkspaceClient) -> list[dict]:
-    """Return all HTTP connections (MCP and non-MCP) — used by manage section."""
-    connections = []
-    for conn in w.connections.list():
-        if conn.connection_type and conn.connection_type.value == "HTTP":
-            connections.append({"name": conn.name, "owner": conn.owner or ""})
-    connections.sort(key=lambda c: c["name"])
-    return connections
-
-
-def _read_existing_servers(w: WorkspaceClient, config_path: str) -> list[dict]:
-    """Read the current selected_servers.json from the workspace."""
+def _read_existing_tools(w: WorkspaceClient, config_path: str) -> list[dict]:
+    """Read the current deployed_tools.json from the workspace."""
     try:
         with w.workspace.download(config_path) as f:
             return json.loads(f.read())
@@ -100,22 +52,82 @@ def _read_existing_servers(w: WorkspaceClient, config_path: str) -> list[dict]:
         return []
 
 
+def _build_tool_definition(api: dict, endpoint: dict) -> dict:
+    """Build a single tool definition from an API + endpoint pair."""
+    tool_name = f"{api['name']}__{endpoint['name']}"
+
+    parameters = []
+    for p in endpoint.get("path_params", []):
+        parameters.append({
+            "name": p["name"],
+            "type": p.get("type", "string"),
+            "required": p.get("required", True),
+            "in": "path",
+            "description": p.get("description", ""),
+        })
+    for p in endpoint.get("query_params", []):
+        param = {
+            "name": p["name"],
+            "type": p.get("type", "string"),
+            "required": p.get("required", False),
+            "in": "query",
+            "description": p.get("description", ""),
+        }
+        if "default" in p:
+            param["default"] = p["default"]
+        parameters.append(param)
+
+    body = None
+    if endpoint.get("body"):
+        body = {
+            "content_type": endpoint["body"].get("content_type", "application/json"),
+            "fields": [
+                {
+                    "name": f["name"],
+                    "type": f.get("type", "string"),
+                    "required": f.get("required", False),
+                    "description": f.get("description", ""),
+                }
+                for f in endpoint["body"].get("fields", [])
+            ],
+        }
+
+    tool_def = {
+        "tool_name": tool_name,
+        "description": endpoint.get("description", ""),
+        "api_name": api["name"],
+        "api_display_name": api.get("display_name", api["name"]),
+        "base_url": api["base_url"],
+        "method": endpoint["method"],
+        "path": endpoint["path"],
+        "auth": api.get("auth", {}),
+        "parameters": parameters,
+        "body": body,
+    }
+
+    if api.get("default_headers"):
+        tool_def["default_headers"] = api["default_headers"]
+    if endpoint.get("headers"):
+        tool_def["headers"] = endpoint["headers"]
+
+    return tool_def
+
+
 def deploy_proxy_app(
     w: WorkspaceClient,
-    selected_servers: list[dict],
+    tool_definitions: list[dict],
     app_name: str,
 ) -> dict:
-    """Merge new servers into existing selected_servers.json and redeploy."""
-    config_path = f"{PROXY_SOURCE_PATH}/selected_servers.json"
+    """Merge new tool definitions into deployed_tools.json and redeploy."""
+    config_path = f"{PROXY_SOURCE_PATH}/deployed_tools.json"
 
-    existing = _read_existing_servers(w, config_path)
-    merged = {s["name"]: s for s in existing}
-    for server in selected_servers:
-        merged[server["name"]] = server
-    existing = list(merged.values())
+    existing = _read_existing_tools(w, config_path)
+    merged = {t["tool_name"]: t for t in existing}
+    for tool in tool_definitions:
+        merged[tool["tool_name"]] = tool
+    all_tools = list(merged.values())
 
-    config_content = json.dumps(existing, indent=2)
-
+    config_content = json.dumps(all_tools, indent=2)
     w.workspace.upload(
         config_path,
         io.BytesIO(config_content.encode()),
@@ -127,7 +139,7 @@ def deploy_proxy_app(
         w.apps.get(app_name)
     except Exception:
         from databricks.sdk.service.apps import App
-        w.apps.create_and_wait(App(name=app_name, description="Bundled MCP proxy server"))
+        w.apps.create_and_wait(App(name=app_name, description="CDK MCP Proxy Server"))
 
     deployment = w.apps.deploy_and_wait(
         app_name=app_name,
@@ -143,569 +155,279 @@ def deploy_proxy_app(
 
 
 # ---------------------------------------------------------------------------
-# Create helpers
+# UI Components
 # ---------------------------------------------------------------------------
-def build_connection_options(form: dict) -> dict[str, str]:
-    """Build the options dict for connections.create() from the wizard form."""
-    auth_type = form["auth_type"]
-    opts: dict[str, str] = {
-        "host": form["host"],
-        "port": form["port"],
-        "is_mcp_connection": "true" if form["is_mcp"] else "false",
+
+def _render_endpoint_card(api: dict, endpoint: dict, key_prefix: str) -> bool:
+    """Render a single endpoint as a selectable card. Returns True if selected."""
+    method = endpoint["method"]
+    method_colors = {
+        "GET": "#61affe",
+        "POST": "#49cc90",
+        "PUT": "#fca130",
+        "PATCH": "#50e3c2",
+        "DELETE": "#f93e3e",
     }
-    if form.get("base_path"):
-        opts["base_path"] = form["base_path"]
+    color = method_colors.get(method, "#999")
 
-    if auth_type == "bearer":
-        opts["bearer_token"] = form["bearer_token"]
+    with st.container(border=True):
+        col_method, col_name = st.columns([1, 4])
+        with col_method:
+            st.markdown(
+                f"<span style='background:{color};color:white;"
+                f"padding:3px 10px;border-radius:4px;font-size:0.8em;"
+                f"font-weight:700;font-family:monospace'>{method}</span>",
+                unsafe_allow_html=True,
+            )
+        with col_name:
+            st.markdown(f"**{endpoint['name']}**")
 
-    elif auth_type == "oauth_m2m":
-        opts["client_id"] = form["client_id"]
-        opts["client_secret"] = form["client_secret"]
-        opts["oauth_scope"] = form["oauth_scope"]
-        opts["token_endpoint"] = form["token_endpoint"]
+        st.caption(f"`{endpoint['path']}`")
+        if endpoint.get("description"):
+            st.caption(endpoint["description"])
 
-    elif auth_type == "oauth_u2m_shared":
-        opts["client_id"] = form["client_id"]
-        opts["client_secret"] = form["client_secret"]
-        opts["oauth_scope"] = form["oauth_scope"]
-        opts["token_endpoint"] = form["token_endpoint"]
-        opts["authorization_endpoint"] = form["authorization_endpoint"]
+        param_parts = []
+        for p in endpoint.get("path_params", []):
+            param_parts.append(f"`{p['name']}` (path, {'required' if p.get('required') else 'optional'})")
+        for p in endpoint.get("query_params", []):
+            param_parts.append(f"`{p['name']}` (query, {'required' if p.get('required') else 'optional'})")
+        if endpoint.get("body"):
+            field_names = [f["name"] for f in endpoint["body"].get("fields", [])]
+            param_parts.append(f"body: {', '.join(field_names)}")
+        if param_parts:
+            st.caption("Params: " + " · ".join(param_parts))
 
-    elif auth_type == "oauth_u2m_per_user":
-        opts["client_id"] = form["client_id"]
-        opts["client_secret"] = form["client_secret"]
-        opts["oauth_scope"] = form["oauth_scope"]
-        opts["token_endpoint"] = form["token_endpoint"]
-        opts["authorization_endpoint"] = form["authorization_endpoint"]
-        if form.get("credential_exchange_method"):
-            opts["oauth_credential_exchange_method"] = form["credential_exchange_method"]
-
-    return opts
+        cb_key = f"{key_prefix}__{api['name']}__{endpoint['name']}"
+        return st.checkbox("Select", key=cb_key, label_visibility="collapsed")
 
 
-# ---------------------------------------------------------------------------
-# Browse View
-# ---------------------------------------------------------------------------
-def browse_view(w: WorkspaceClient):
+def _get_auth_env_vars(api: dict) -> list[str]:
+    """Return the list of environment variable names needed for an API's auth."""
+    auth = api.get("auth", {})
+    method = auth.get("method", "none")
+    env_vars = []
+    if method in ("pat", "bearer"):
+        if auth.get("credential_env"):
+            env_vars.append(auth["credential_env"])
+    elif method == "oauth":
+        if auth.get("client_id_env"):
+            env_vars.append(auth["client_id_env"])
+        if auth.get("client_secret_env"):
+            env_vars.append(auth["client_secret_env"])
+    elif method == "basic":
+        if auth.get("username_env"):
+            env_vars.append(auth["username_env"])
+        if auth.get("password_env"):
+            env_vars.append(auth["password_env"])
+    elif method == "api_key":
+        if auth.get("credential_env"):
+            env_vars.append(auth["credential_env"])
+    return env_vars
+
+
+def select_view(w: WorkspaceClient):
+    """Main view: browse APIs and select endpoints to deploy as MCP tools."""
     st.markdown(
-        "Browse all HTTP connections in this workspace. **MCP** servers are "
-        "deployed via the proxy app. **REST** APIs are proxied through "
-        "Unity Catalog connection proxy endpoints."
+        "Browse available APIs and select endpoints to deploy as individual "
+        "MCP tools on the proxy server."
     )
 
-    with st.spinner("Loading HTTP connections from workspace..."):
-        connections = list_all_http_servers(w)
-
-    if not connections:
-        st.warning("No HTTP connections found in this workspace.")
+    apis = load_api_config()
+    if not apis:
+        st.warning("No APIs found. Add API definitions to `api_config.yaml`.")
         return
 
-    mcp_count = sum(1 for c in connections if c["type"] == "mcp")
-    rest_count = sum(1 for c in connections if c["type"] == "rest")
+    search = st.text_input(
+        "Search APIs",
+        placeholder="e.g. github, posts, issues",
+        label_visibility="collapsed",
+    )
 
-    col_search, col_type, col_owner = st.columns([3, 1, 1])
-    with col_search:
-        search = st.text_input(
-            "Search",
-            placeholder="e.g. tavily, airtable, slack",
-            label_visibility="collapsed",
-        )
-    with col_type:
-        type_filter = st.selectbox("Type", ["All", "MCP", "REST"])
-    with col_owner:
-        owner_filter = st.selectbox(
-            "Owner",
-            ["All"] + sorted({c["owner"] for c in connections if c["owner"]}),
-        )
-
-    filtered = connections
+    filtered_apis = apis
     if search:
         q = search.lower()
-        filtered = [c for c in filtered if q in c["name"].lower() or q in c["host"].lower()]
-    if type_filter != "All":
-        filtered = [c for c in filtered if c["type"] == type_filter.lower()]
-    if owner_filter != "All":
-        filtered = [c for c in filtered if c["owner"] == owner_filter]
+        filtered_apis = [
+            a for a in apis
+            if q in a["name"].lower()
+            or q in a.get("display_name", "").lower()
+            or q in a.get("description", "").lower()
+            or any(q in e["name"].lower() or q in e.get("description", "").lower()
+                    for e in a.get("endpoints", []))
+        ]
 
-    if "selected" not in st.session_state:
-        st.session_state.selected = set()
+    if not filtered_apis:
+        st.info("No APIs match your search.")
+        return
 
-    # Summary bar
-    sel_count = len(st.session_state.selected)
-    col_stats, col_sel_all = st.columns([3, 1])
-    with col_stats:
-        st.caption(
-            f"Showing **{len(filtered)}** of {len(connections)} connections "
-            f"({mcp_count} MCP, {rest_count} REST) · **{sel_count} selected**"
-        )
-    with col_sel_all:
-        if st.checkbox("Select all visible", key="select_all"):
-            for c in filtered:
-                st.session_state.selected.add(c["name"])
+    total_endpoints = sum(len(a.get("endpoints", [])) for a in apis)
+    st.caption(
+        f"Showing **{len(filtered_apis)}** API(s) with "
+        f"**{sum(len(a.get('endpoints', [])) for a in filtered_apis)}** "
+        f"endpoint(s) (of {total_endpoints} total)"
+    )
 
-    # Card grid — 3 columns
-    cols_per_row = 3
-    for row_start in range(0, len(filtered), cols_per_row):
-        row = filtered[row_start : row_start + cols_per_row]
-        cols = st.columns(cols_per_row)
-        for i, c in enumerate(row):
-            with cols[i]:
-                is_mcp = c["type"] == "mcp"
-                badge_color = "#1E88E5" if is_mcp else "#FB8C00"
-                badge_label = "MCP" if is_mcp else "REST"
-                icon = "🔌" if is_mcp else "🌐"
-                host_display = c["host"].replace("https://", "")
-                base_path = c.get("base_path", "")
+    if "selected_endpoints" not in st.session_state:
+        st.session_state.selected_endpoints = set()
 
-                with st.container(border=True):
-                    st.markdown(
-                        f"<span style='background:{badge_color};color:white;"
-                        f"padding:2px 8px;border-radius:4px;font-size:0.75em;"
-                        f"font-weight:600'>{badge_label}</span>",
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(f"### {icon} {c['name']}")
-                    st.caption(f"`{host_display}{base_path}`")
-                    if c.get("comment"):
-                        st.caption(c["comment"][:80] + ("..." if len(c.get("comment", "")) > 80 else ""))
-                    if c.get("owner"):
-                        st.caption(f"Owner: {c['owner']}")
+    for api in filtered_apis:
+        auth = api.get("auth", {})
+        auth_method = auth.get("method", "none")
+        auth_badge = auth_method.upper()
+        auth_color = "#6c757d" if auth_method == "none" else "#17a2b8"
+        endpoints = api.get("endpoints", [])
 
-                    checked = st.checkbox(
-                        "Select for deploy",
-                        value=c["name"] in st.session_state.selected,
-                        key=f"cb_{c['name']}",
-                    )
-                    if checked:
-                        st.session_state.selected.add(c["name"])
-                    else:
-                        st.session_state.selected.discard(c["name"])
+        with st.expander(
+            f"**{api.get('display_name', api['name'])}** — "
+            f"{len(endpoints)} endpoint(s)",
+            expanded=False,
+        ):
+            col_info, col_auth = st.columns([3, 1])
+            with col_info:
+                st.caption(f"`{api['base_url']}`")
+                if api.get("description"):
+                    st.markdown(api["description"])
+            with col_auth:
+                st.markdown(
+                    f"<span style='background:{auth_color};color:white;"
+                    f"padding:2px 8px;border-radius:4px;font-size:0.75em;"
+                    f"font-weight:600'>Auth: {auth_badge}</span>",
+                    unsafe_allow_html=True,
+                )
 
+            env_vars = _get_auth_env_vars(api)
+            if env_vars:
+                st.info(
+                    f"Required env var(s) on proxy app: `{'`, `'.join(env_vars)}`",
+                    icon="🔑",
+                )
+
+            col_sel_all, _ = st.columns([1, 3])
+            with col_sel_all:
+                select_all_key = f"sel_all__{api['name']}"
+                if st.checkbox("Select all endpoints", key=select_all_key):
+                    for ep in endpoints:
+                        st.session_state.selected_endpoints.add(
+                            f"{api['name']}__{ep['name']}"
+                        )
+
+            for ep in endpoints:
+                ep_key = f"{api['name']}__{ep['name']}"
+                is_selected = _render_endpoint_card(api, ep, "ep")
+                if is_selected:
+                    st.session_state.selected_endpoints.add(ep_key)
+                else:
+                    st.session_state.selected_endpoints.discard(ep_key)
+
+    # --- Deploy section ---
     st.markdown("---")
-
-    # --- Split selected into MCP and REST ---
-    conn_index = {c["name"]: c for c in connections}
-    selected_mcp = [conn_index[n] for n in st.session_state.selected
-                    if n in conn_index and conn_index[n]["type"] == "mcp"]
-    selected_rest = [conn_index[n] for n in st.session_state.selected
-                     if n in conn_index and conn_index[n]["type"] == "rest"]
-
-    st.subheader("Deploy")
+    st.subheader("Deploy Selected Tools")
 
     proxy_app_name = st.text_input(
         "Proxy app name",
         value=MCP_PROXY_APP_NAME,
-        help="Name for the Databricks App that will serve as the MCP proxy.",
+        help="Name of the Databricks App that serves as the MCP proxy.",
     )
 
-    # Review
-    if selected_mcp or selected_rest:
-        with st.expander(
-            f"Review: {len(selected_mcp)} MCP server(s) + {len(selected_rest)} REST API(s)"
-        ):
-            if selected_mcp:
-                st.markdown("**MCP servers** (JSON-RPC proxy):")
-                for sc in selected_mcp:
-                    st.markdown(f"- {sc['name']} → `{sc['host']}{sc['base_path']}`")
-            if selected_rest:
-                st.markdown("**REST APIs** (UC connection proxy):")
-                for sc in selected_rest:
-                    st.markdown(f"- {sc['name']} → `{sc['host']}{sc['base_path']}`")
+    selected = st.session_state.selected_endpoints
+    selected_tools = []
+    required_env_vars = set()
 
-    total_selected = len(selected_mcp) + len(selected_rest)
-    can_deploy = total_selected > 0
+    for api in apis:
+        for ep in api.get("endpoints", []):
+            ep_key = f"{api['name']}__{ep['name']}"
+            if ep_key in selected:
+                selected_tools.append(_build_tool_definition(api, ep))
+                for env_var in _get_auth_env_vars(api):
+                    required_env_vars.add(env_var)
 
-    btn_label = f"Deploy {len(selected_mcp)} MCP + {len(selected_rest)} REST"
-    deploy_btn = st.button(btn_label, disabled=not can_deploy, type="primary")
+    if selected_tools:
+        with st.expander(f"Review: {len(selected_tools)} tool(s) to deploy"):
+            for tool in selected_tools:
+                st.markdown(
+                    f"- **{tool['tool_name']}** (`{tool['method']} {tool['path']}`) "
+                    f"— {tool['description']}"
+                )
+            if required_env_vars:
+                st.markdown("---")
+                st.markdown(
+                    "**Required environment variables** (set on the proxy app):"
+                )
+                for var in sorted(required_env_vars):
+                    st.markdown(f"- `{var}`")
+
+    deploy_btn = st.button(
+        f"Deploy {len(selected_tools)} tool(s)",
+        disabled=len(selected_tools) == 0,
+        type="primary",
+    )
 
     if deploy_btn:
         with st.status("Deploying...", expanded=True) as status:
-            all_proxy_servers: list[dict] = []
-
-            if selected_mcp:
-                st.write(f"Adding {len(selected_mcp)} MCP server(s)...")
-                all_proxy_servers.extend(selected_mcp)
-
-            if selected_rest:
-                st.write(f"Adding {len(selected_rest)} REST API connection(s)...")
-                for sc in selected_rest:
-                    all_proxy_servers.append({
-                        "name": sc["name"],
-                        "type": "rest",
-                        "connection_name": sc["name"],
-                        "host": sc.get("host", ""),
-                        "base_path": sc.get("base_path", ""),
-                    })
-
-            if all_proxy_servers:
-                st.write("Deploying proxy app...")
-                try:
-                    result = deploy_proxy_app(w, all_proxy_servers, proxy_app_name)
-                    st.success(f"Proxy app **{result['name']}** deployed!")
-                    if result.get("url"):
-                        st.markdown(f"**App URL:** [{result['url']}]({result['url']})")
-                except Exception as e:
-                    st.error(f"Proxy deployment failed: {e}")
-                    st.exception(e)
+            st.write(f"Deploying {len(selected_tools)} tool(s) to **{proxy_app_name}**...")
+            try:
+                result = deploy_proxy_app(w, selected_tools, proxy_app_name)
+                st.success(f"Proxy app **{result['name']}** deployed!")
+                if result.get("url"):
+                    st.markdown(f"**App URL:** [{result['url']}]({result['url']})")
+                    st.markdown(
+                        f"**MCP endpoint:** `{result['url']}/mcp`"
+                    )
+            except Exception as e:
+                st.error(f"Deployment failed: {e}")
+                st.exception(e)
 
             status.update(label="Deployment complete!", state="complete")
             st.balloons()
-
-    # --- Manage connections ---
-    st.markdown("---")
-    with st.expander("Manage connections"):
-        all_http = _list_all_http_connections(w)
-        if all_http:
-            del_name = st.selectbox(
-                "Select connection to delete",
-                [c["name"] for c in all_http],
-                key="del_conn_select",
-            )
-            if st.button("Delete connection", type="primary", key="del_conn_btn"):
-                try:
-                    w.connections.delete(name=del_name)
-                    st.success(f"Connection **{del_name}** deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to delete: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Create View — multi-step wizard (mirrors Databricks Catalog Explorer UI)
-# ---------------------------------------------------------------------------
-STEP_LABELS = ["Connection basics", "Authentication", "Connection details"]
-
-
-def _init_create_state():
-    defaults = {"create_step": 0, "create_form": {}}
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-
-def _step_indicator(current: int):
-    cols = st.columns(len(STEP_LABELS))
-    for i, label in enumerate(STEP_LABELS):
-        with cols[i]:
-            if i < current:
-                st.markdown(f":white_check_mark: ~~{label}~~")
-            elif i == current:
-                st.markdown(f":arrow_forward: **{label}**")
-            else:
-                st.markdown(f":white_large_square: {label}")
-    st.divider()
-
-
-def _step_connection_basics():
-    """Step 1: Connection name, type (HTTP), auth type, OAuth provider, comment."""
-    form = st.session_state.create_form
-
-    with st.container(border=True):
-        st.caption("Step 1")
-        st.subheader("Connection basics")
-        st.divider()
-
-        form["name"] = st.text_input(
-            "Connection name*",
-            value=form.get("name", ""),
-        )
-
-        st.selectbox(
-            "Connection type*",
-            ["HTTP"],
-            disabled=True,
-        )
-
-        auth_label = st.selectbox(
-            "Auth type*",
-            AUTH_TYPE_OPTIONS,
-            index=AUTH_TYPE_OPTIONS.index(form["auth_label"]) if form.get("auth_label") else 0,
-        )
-        form["auth_label"] = auth_label
-        form["auth_type"] = AUTH_TYPE_KEYS[auth_label]
-
-        is_oauth = form["auth_type"] != "bearer"
-        if is_oauth:
-            st.selectbox(
-                "OAuth provider",
-                OAUTH_PROVIDERS,
-                help="Select a pre-configured OAuth provider or choose 'Manual configuration' to set up your own.",
-            )
-
-        form["comment"] = st.text_area(
-            "Comment",
-            value=form.get("comment", ""),
-            height=100,
-        )
-
-    st.session_state.create_form = form
-    can_proceed = bool(form.get("name"))
-
-    col_l, col_r = st.columns([4, 1])
-    with col_r:
-        if st.button("Next →", disabled=not can_proceed, type="primary", key="basics_next"):
-            st.session_state.create_step = 1
-            st.rerun()
-
-
-def _step_authentication():
-    """Step 2: Credentials that vary by auth type."""
-    form = st.session_state.create_form
-    auth_type = form["auth_type"]
-    auth_label = form.get("auth_label", "")
-
-    with st.container(border=True):
-        st.caption("Step 2")
-        st.subheader("Authentication")
-        st.markdown(f"**{auth_label}**")
-        st.divider()
-
-        if auth_type == "bearer":
-            form["bearer_token"] = st.text_input(
-                "Bearer Token*",
-                type="password",
-                value=form.get("bearer_token", ""),
-                help="The authentication token included in request headers.",
-            )
-            can_proceed = bool(form.get("bearer_token"))
-
-        elif auth_type == "oauth_m2m":
-            form["client_id"] = st.text_input(
-                "Client ID*",
-                value=form.get("client_id", ""),
-                help="Unique identifier for the application you created.",
-            )
-            form["client_secret"] = st.text_input(
-                "Client secret*",
-                type="password",
-                value=form.get("client_secret", ""),
-                help="Secret or password generated for the application.",
-            )
-            form["oauth_scope"] = st.text_input(
-                "OAuth scope",
-                value=form.get("oauth_scope", ""),
-                help="Space-delimited, case-sensitive scopes. e.g. channels:read chat:write",
-            )
-            form["token_endpoint"] = st.text_input(
-                "Token endpoint*",
-                value=form.get("token_endpoint", ""),
-                help="URL to obtain access tokens. e.g. https://auth.example.com/oauth/token",
-            )
-            can_proceed = all(form.get(k) for k in ["client_id", "client_secret", "token_endpoint"])
-
-        elif auth_type == "oauth_u2m_shared":
-            st.info(
-                "You will be prompted to sign in. The credentials will be shared by "
-                "all users of this connection. Some providers require adding "
-                "`/login/oauth/http.html` to your redirect URL allowlist.",
-                icon="ℹ️",
-            )
-            form["client_id"] = st.text_input(
-                "Client ID*",
-                value=form.get("client_id", ""),
-            )
-            form["client_secret"] = st.text_input(
-                "Client secret*",
-                type="password",
-                value=form.get("client_secret", ""),
-            )
-            form["oauth_scope"] = st.text_input(
-                "OAuth scope",
-                value=form.get("oauth_scope", ""),
-                help="Space-delimited scopes.",
-            )
-            form["authorization_endpoint"] = st.text_input(
-                "Authorization endpoint*",
-                value=form.get("authorization_endpoint", ""),
-                help="e.g. https://auth.example.com/oauth/authorize",
-            )
-            form["token_endpoint"] = st.text_input(
-                "Token endpoint*",
-                value=form.get("token_endpoint", ""),
-            )
-            can_proceed = all(
-                form.get(k)
-                for k in ["client_id", "client_secret", "token_endpoint", "authorization_endpoint"]
-            )
-
-        elif auth_type == "oauth_u2m_per_user":
-            st.info(
-                "Each user will be prompted to sign in individually. "
-                "Some providers require adding `/login/oauth/http.html` "
-                "to your redirect URL allowlist.",
-                icon="ℹ️",
-            )
-            form["client_id"] = st.text_input(
-                "Client ID*",
-                value=form.get("client_id", ""),
-            )
-            form["client_secret"] = st.text_input(
-                "Client secret*",
-                type="password",
-                value=form.get("client_secret", ""),
-            )
-            form["oauth_scope"] = st.text_input(
-                "OAuth scope",
-                value=form.get("oauth_scope", ""),
-            )
-            form["authorization_endpoint"] = st.text_input(
-                "Authorization endpoint*",
-                value=form.get("authorization_endpoint", ""),
-            )
-            form["token_endpoint"] = st.text_input(
-                "Token endpoint*",
-                value=form.get("token_endpoint", ""),
-            )
-            form["credential_exchange_method"] = st.selectbox(
-                "Credential exchange method",
-                list(CREDENTIAL_EXCHANGE_METHODS.keys()),
-                format_func=lambda k: CREDENTIAL_EXCHANGE_METHODS[k],
-                help="How OAuth client credentials are passed during token exchange.",
-            )
-            can_proceed = all(
-                form.get(k)
-                for k in ["client_id", "client_secret", "token_endpoint", "authorization_endpoint"]
-            )
-        else:
-            can_proceed = False
-
-    st.session_state.create_form = form
-
-    col_back, _, col_next = st.columns([1, 3, 1])
-    with col_back:
-        if st.button("← Back", key="auth_back"):
-            st.session_state.create_step = 0
-            st.rerun()
-    with col_next:
-        if st.button("Next →", disabled=not can_proceed, type="primary", key="auth_next"):
-            st.session_state.create_step = 2
-            st.rerun()
-
-
-def _step_connection_details(w: WorkspaceClient):
-    """Step 3: Host, port, base_path, MCP toggle."""
-    form = st.session_state.create_form
-    auth_type = form["auth_type"]
-
-    with st.container(border=True):
-        st.caption("Step 3")
-        st.subheader("Connection details")
-        st.divider()
-
-        col_host, col_port = st.columns([4, 1])
-        with col_host:
-            form["host"] = st.text_input(
-                "Host*",
-                value=form.get("host", "https://"),
-                help="Base URL of the external service. e.g. https://api.example.com",
-            )
-        with col_port:
-            form["port"] = st.text_input(
-                "Port",
-                value=form.get("port", "443"),
-            )
-
-        form["base_path"] = st.text_input(
-            "Base path",
-            value=form.get("base_path", "/"),
-            help="Root path appended to host. e.g. /api/v1 or /mcp",
-        )
-
-        form["is_mcp"] = st.toggle(
-            "Register as MCP server",
-            value=form.get("is_mcp", True),
-            help="Enable to make this connection available as an MCP server.",
-        )
-
-    st.session_state.create_form = form
-
-    can_create = bool(form.get("host") and form["host"] != "https://")
-
-    with st.expander("Review configuration"):
-        review = {
-            "name": form.get("name", ""),
-            "connection_type": "HTTP",
-            "auth_type": form.get("auth_label", ""),
-            "host": form.get("host", ""),
-            "port": form.get("port", "443"),
-            "base_path": form.get("base_path", ""),
-            "is_mcp_connection": form.get("is_mcp", True),
-        }
-        if form.get("comment"):
-            review["comment"] = form["comment"]
-        st.json(review)
-
-    col_back, _, col_create = st.columns([1, 3, 1])
-    with col_back:
-        if st.button("← Back", key="details_back"):
-            st.session_state.create_step = 1
-            st.rerun()
-    with col_create:
-        if st.button("Create connection", disabled=not can_create, type="primary", key="create_btn"):
-            _create_connection(w, form)
-
-
-def _create_connection(w: WorkspaceClient, form: dict):
-    auth_label = form.get("auth_label", form.get("auth_type", ""))
-    with st.status("Creating connection...", expanded=True) as status:
-        try:
-            options = build_connection_options(form)
-            st.write(f"Creating **{form['name']}** (HTTP / {auth_label})...")
-
-            conn = w.connections.create(
-                name=form["name"],
-                connection_type=ConnectionType.HTTP,
-                options=options,
-                comment=form.get("comment") or None,
-            )
-
-            status.update(label="Connection created!", state="complete")
-            st.success(f"Connection **{conn.name}** created successfully!")
-
-            st.session_state.create_step = 0
-            st.session_state.create_form = {}
-            st.balloons()
-
-        except Exception as e:
-            status.update(label="Creation failed", state="error")
-            st.error(f"Failed to create connection: {e}")
-            st.exception(e)
-
-
-def create_view(w: WorkspaceClient):
-    _init_create_state()
-    _step_indicator(st.session_state.create_step)
-
-    if st.session_state.create_step == 0:
-        _step_connection_basics()
-    elif st.session_state.create_step == 1:
-        _step_authentication()
-    elif st.session_state.create_step == 2:
-        _step_connection_details(w)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+def test_mcp_connection(w: WorkspaceClient):
+    """Test the connection to the deployed MCP proxy server using OBO auth."""
+    from databricks_ai_bridge import ModelServingUserCredentials
+    from databricks_mcp import DatabricksMCPClient
+
+    app_info = w.apps.get(MCP_PROXY_APP_NAME)
+    mcp_server_url = f"{app_info.url}/mcp"
+
+    user_client = WorkspaceClient(credentials_strategy=ModelServingUserCredentials())
+
+    mcp_client = DatabricksMCPClient(
+        server_url=mcp_server_url,
+        workspace_client=user_client,
+    )
+
+    tools = mcp_client.list_tools()
+    print(f"Available tools: {tools}")
+    return tools
+
+
 def main():
     st.set_page_config(
-        page_title="CDK MCP Registry",
+        page_title="CDK MCP Tool Selector",
         page_icon="🔌",
         layout="wide",
     )
 
-    st.title("CDK MCP Registry")
+    st.title("CDK MCP Tool Selector")
 
     w = get_workspace_client()
+    select_view(w)
 
-    tab_browse, tab_create = st.tabs(["Browse & Deploy", "Create Connection"])
-
-    with tab_browse:
-        browse_view(w)
-
-    with tab_create:
-        create_view(w)
+    st.markdown("---")
+    st.subheader("Test MCP Connection")
+    if st.button("Test Connection", type="secondary"):
+        with st.spinner("Connecting to MCP server..."):
+            try:
+                tools = test_mcp_connection(w)
+                st.success(f"Connected! Found {len(tools)} tool(s).")
+                for tool in tools:
+                    st.write(f"- {tool}")
+            except Exception as e:
+                st.error(f"Connection failed: {e}")
+                st.exception(e)
 
 
 if __name__ == "__main__":

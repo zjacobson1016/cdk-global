@@ -1,6 +1,6 @@
 resources:
   apps:
     mcp_proxy_app:
-      name: mcp-proxy-${bundle.target}
+      name: mcp-proxy-${bundle.target}-zach
       description: "MCP proxy server that bundles selected External API MCP servers"
       source_code_path: ../src/mcp_proxy_app

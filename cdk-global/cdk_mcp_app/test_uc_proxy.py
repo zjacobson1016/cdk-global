@@ -7,10 +7,16 @@ import json
 import requests
 from databricks.sdk import WorkspaceClient
 
-PROFILE = "group-demo"
-CONNECTION = "airtable-api1"
+PROFILE = "cdk"
+CONNECTION = "fortellis_api"
 
 w = WorkspaceClient(profile=PROFILE)
+connections = w.connections.list()
+for conn in connections:
+    print(f"Connection: {conn.name}")
+    print(f"Owner: {conn.owner}")
+    print(f"Comment: {conn.comment}")
+    print(f"Connection Type: {conn.connection_type}")
 
 # 0) Show the connection description from Unity Catalog
 conn = w.connections.get(CONNECTION)

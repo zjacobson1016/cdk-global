@@ -11,4 +11,4 @@ command:
 
 env:
   - name: MCP_PROXY_APP_NAME
-    value: "mcp-proxy-dev"
+    value: "mcp-proxy-dev-zach"

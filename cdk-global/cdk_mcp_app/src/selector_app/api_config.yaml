@@ -1,0 +1,309 @@
+# API Configuration Registry
+#
+# Defines all available APIs and their endpoints that can be deployed
+# as MCP tools via the selector app. Each API can have multiple endpoints,
+# and each endpoint becomes an individual MCP tool when deployed.
+#
+# Auth methods: pat, bearer, oauth, basic, api_key
+# HTTP methods: GET, POST, PUT, PATCH, DELETE
+
+apis:
+  - name: jsonplaceholder
+    display_name: JSONPlaceholder API
+    base_url: https://jsonplaceholder.typicode.com
+    description: Free fake REST API for testing and prototyping
+    auth:
+      method: none
+    endpoints:
+      - name: list_posts
+        description: List all posts or filter by userId
+        method: GET
+        path: /posts
+        query_params:
+          - name: userId
+            type: integer
+            required: false
+            description: Filter posts by user ID
+      - name: get_post
+        description: Get a single post by ID
+        method: GET
+        path: /posts/{id}
+        path_params:
+          - name: id
+            type: integer
+            required: true
+            description: Post ID
+      - name: create_post
+        description: Create a new post
+        method: POST
+        path: /posts
+        body:
+          content_type: application/json
+          fields:
+            - name: title
+              type: string
+              required: true
+              description: Post title
+            - name: body
+              type: string
+              required: true
+              description: Post body content
+            - name: userId
+              type: integer
+              required: true
+              description: Author user ID
+      - name: update_post
+        description: Update an existing post
+        method: PUT
+        path: /posts/{id}
+        path_params:
+          - name: id
+            type: integer
+            required: true
+            description: Post ID to update
+        body:
+          content_type: application/json
+          fields:
+            - name: title
+              type: string
+              required: false
+              description: Updated post title
+            - name: body
+              type: string
+              required: false
+              description: Updated post body content
+            - name: userId
+              type: integer
+              required: false
+              description: Updated author user ID
+      - name: patch_post
+        description: Partially update a post
+        method: PATCH
+        path: /posts/{id}
+        path_params:
+          - name: id
+            type: integer
+            required: true
+            description: Post ID to patch
+        body:
+          content_type: application/json
+          fields:
+            - name: title
+              type: string
+              required: false
+              description: Updated post title
+            - name: body
+              type: string
+              required: false
+              description: Updated post body content
+      - name: delete_post
+        description: Delete a post
+        method: DELETE
+        path: /posts/{id}
+        path_params:
+          - name: id
+            type: integer
+            required: true
+            description: Post ID to delete
+      - name: list_comments
+        description: List comments for a post
+        method: GET
+        path: /posts/{postId}/comments
+        path_params:
+          - name: postId
+            type: integer
+            required: true
+            description: Post ID to get comments for
+
+  - name: github
+    display_name: GitHub API
+    base_url: https://api.github.com
+    description: GitHub REST API for repositories, issues, and pull requests
+    auth:
+      method: pat
+      header_name: Authorization
+      header_prefix: "Bearer "
+      credential_env: GITHUB_PAT
+    endpoints:
+      - name: list_repos
+        description: List public repositories for a user
+        method: GET
+        path: /users/{username}/repos
+        path_params:
+          - name: username
+            type: string
+            required: true
+            description: GitHub username
+        query_params:
+          - name: per_page
+            type: integer
+            required: false
+            default: 30
+            description: Results per page (max 100)
+          - name: sort
+            type: string
+            required: false
+            default: full_name
+            description: "Sort by: created, updated, pushed, full_name"
+      - name: get_repo
+        description: Get details for a specific repository
+        method: GET
+        path: /repos/{owner}/{repo}
+        path_params:
+          - name: owner
+            type: string
+            required: true
+            description: Repository owner
+          - name: repo
+            type: string
+            required: true
+            description: Repository name
+      - name: list_issues
+        description: List issues for a repository
+        method: GET
+        path: /repos/{owner}/{repo}/issues
+        path_params:
+          - name: owner
+            type: string
+            required: true
+            description: Repository owner
+          - name: repo
+            type: string
+            required: true
+            description: Repository name
+        query_params:
+          - name: state
+            type: string
+            required: false
+            default: open
+            description: "Filter by state: open, closed, all"
+          - name: per_page
+            type: integer
+            required: false
+            default: 30
+            description: Results per page (max 100)
+      - name: create_issue
+        description: Create a new issue in a repository
+        method: POST
+        path: /repos/{owner}/{repo}/issues
+        path_params:
+          - name: owner
+            type: string
+            required: true
+            description: Repository owner
+          - name: repo
+            type: string
+            required: true
+            description: Repository name
+        body:
+          content_type: application/json
+          fields:
+            - name: title
+              type: string
+              required: true
+              description: Issue title
+            - name: body
+              type: string
+              required: false
+              description: Issue body in markdown
+            - name: labels
+              type: array
+              required: false
+              description: "List of label names (e.g. [\"bug\", \"urgent\"])"
+
+  - name: aiva_user_config
+    display_name: AIVA User Config API
+    base_url: https://api.fortellis.io/cdk-test/neuron/conversational-ai/interface/v1
+    description: AIVA user configuration management — get, create, and update user settings for FAQs and swift
+    auth:
+      method: oauth
+      token_url: https://identity.fortellis.io/oauth2/aus1p1ixy7YL8cMq02p7/v1/token?grant_type=client_credentials&scope=anonymous
+      client_id: NMVuDsug0ySjqABCxsrTaOB4f9B5LvV0
+      client_secret: z88JGmHmKiHyhAs5
+      header_name: Authorization
+      header_prefix: "Bearer "
+    default_headers:
+      - name: Subscription-Id
+        type: string
+        required: true
+        description: Fortellis Marketplace unique identifier for an Organization's subscription to an App
+      - name: Department-Id
+        type: string
+        required: true
+        description: Unique ID indicating a specific department within a dealer (GUID format)
+      - name: Accept
+        type: string
+        required: true
+        default: application/json
+        description: Content types supported by the client (MIME type)
+    endpoints:
+      - name: get_user_config
+        description: Retrieve saved user configuration by user_id
+        method: GET
+        path: /user-config
+        query_params:
+          - name: user_id
+            type: string
+            required: true
+            description: User ID to look up configuration for
+        headers:
+          - name: Request-Id
+            type: string
+            required: true
+            description: Correlation ID (GUID) unique per request
+      - name: create_user_config
+        description: Create a new user configuration with FAQs and swift settings
+        method: POST
+        path: /user-config
+        headers:
+          - name: Request-Id
+            type: string
+            required: true
+            description: Correlation ID (GUID) unique per request
+        body:
+          content_type: application/json
+          fields:
+            - name: user_id
+              type: string
+              required: true
+              description: User ID
+            - name: enterprise_id
+              type: string
+              required: true
+              description: Enterprise ID
+            - name: questions
+              type: string
+              required: false
+              description: "Questions separated by pipe (|), e.g. 'How many ROs did we close?|How many appointments today?'"
+            - name: is_swift
+              type: boolean
+              required: false
+              description: Whether swift mode is enabled
+      - name: update_user_config
+        description: Update an existing user configuration for FAQs and swift settings
+        method: PUT
+        path: /user-config
+        headers:
+          - name: Request-Id
+            type: string
+            required: true
+            description: Correlation ID (GUID) unique per request
+        body:
+          content_type: application/json
+          fields:
+            - name: user_id
+              type: string
+              required: true
+              description: User ID
+            - name: enterprise_id
+              type: string
+              required: true
+              description: Enterprise ID
+            - name: questions
+              type: string
+              required: false
+              description: "Questions separated by pipe (|), e.g. 'How many ROs did we close?|How many appointments today?'"
+            - name: is_swift
+              type: boolean
+              required: false
+              description: Whether swift mode is enabled

@@ -1,350 +1,318 @@
 """
 CDK MCP Proxy Server
 
-A FastMCP server that aggregates multiple upstream MCP servers into a single
-unified MCP endpoint. Supports two server types:
+A FastMCP server that dynamically registers individual MCP tools from
+API endpoint definitions. Each endpoint in deployed_tools.json becomes
+its own MCP tool with a typed input schema.
 
-  - **mcp** (default): Native MCP servers accessed via Databricks Unity Catalog
-    external connections (JSON-RPC via /api/2.0/mcp/external/{name}).
-  - **rest**: Plain REST API connections proxied via Unity Catalog connection
-    proxy (/api/2.0/unity-catalog/connections/{name}/proxy/{path}).
-
-Users select which servers to bundle via the companion Selector app,
-which writes selected_servers.json before deploying this app.
+The companion Selector app writes deployed_tools.json before deploying
+this app.
 """
 
+import base64
 import json
 import logging
 import os
-import uuid
 from pathlib import Path
+from typing import Optional
 
 import httpx
-from databricks.sdk import WorkspaceClient
 from fastmcp import FastMCP
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Load selected server config (written by the Selector app at deploy time)
+# Load tool config (written by the Selector app at deploy time)
 # ---------------------------------------------------------------------------
-CONFIG_PATH = Path(__file__).parent / "selected_servers.json"
+CONFIG_PATH = Path(__file__).parent / "deployed_tools.json"
+
+TYPE_MAP = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "array": str,
+    "object": str,
+}
 
 
-def _load_selected_servers() -> list[dict]:
+def _load_tool_configs() -> list[dict]:
     if not CONFIG_PATH.exists():
-        logger.warning("selected_servers.json not found — proxy has no upstream servers")
+        logger.warning("deployed_tools.json not found — no tools to register")
         return []
     with open(CONFIG_PATH) as f:
         return json.load(f)
 
 
-SELECTED_SERVERS = _load_selected_servers()
-SERVER_INDEX = {s["name"]: s for s in SELECTED_SERVERS}
-
-logger.info(
-    "MCP Proxy loaded %d upstream server(s): %s",
-    len(SELECTED_SERVERS),
-    [s["name"] for s in SELECTED_SERVERS],
-)
-
 # ---------------------------------------------------------------------------
-# FastMCP Server
+# Auth helpers
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP(
-    "CDK MCP Proxy",
-    instructions=(
-        "You are the CDK MCP Proxy server. You aggregate tools from multiple "
-        "upstream MCP servers and REST API connections into one endpoint.\n\n"
-        "Use `list_servers` to see bundled servers.\n"
-        "Use `list_upstream_tools` to discover tools on a specific server.\n"
-        "Use `call_upstream_tool` to invoke any tool on any server."
-    ),
-)
+def _resolve_auth_headers(auth_cfg: dict) -> dict[str, str]:
+    """Build HTTP headers for the configured auth method."""
+    method = auth_cfg.get("method", "none")
+
+    if method == "none":
+        return {}
+
+    if method in ("pat", "bearer"):
+        credential = os.environ.get(auth_cfg.get("credential_env", ""), "")
+        if not credential:
+            logger.warning(
+                "Auth credential env var %s is not set",
+                auth_cfg.get("credential_env"),
+            )
+            return {}
+        header_name = auth_cfg.get("header_name", "Authorization")
+        prefix = auth_cfg.get("header_prefix", "Bearer ")
+        return {header_name: f"{prefix}{credential}"}
+
+    if method == "basic":
+        username = os.environ.get(auth_cfg.get("username_env", ""), "")
+        password = os.environ.get(auth_cfg.get("password_env", ""), "")
+        encoded = base64.b64encode(f"{username}:{password}".encode()).decode()
+        return {"Authorization": f"Basic {encoded}"}
+
+    if method == "api_key":
+        credential = os.environ.get(auth_cfg.get("credential_env", ""), "")
+        header_name = auth_cfg.get("header_name", "X-API-Key")
+        return {header_name: credential}
+
+    if method == "oauth":
+        return _resolve_oauth_headers(auth_cfg)
+
+    return {}
 
 
-def _get_workspace_client() -> WorkspaceClient:
-    return WorkspaceClient(
-        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
-        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
-    )
+def _resolve_oauth_headers(auth_cfg: dict) -> dict[str, str]:
+    """Perform OAuth client_credentials flow and return Bearer header.
 
+    Supports two credential patterns:
+    - Inline: ``client_id`` / ``client_secret`` values directly in the config
+    - Env-var: ``client_id_env`` / ``client_secret_env`` referencing env vars
 
-# ---------------------------------------------------------------------------
-# MCP server helpers (JSON-RPC for native MCP connections)
-# ---------------------------------------------------------------------------
-
-def _call_upstream_mcp(
-    w: WorkspaceClient,
-    server: dict,
-    method: str,
-    params: dict | None = None,
-) -> dict:
-    """Send a JSON-RPC request to an upstream MCP server."""
-    url = f"{w.config.host}/api/2.0/mcp/external/{server['name']}"
-    headers = w.config.authenticate()
-    headers["Content-Type"] = "application/json"
-
-    payload = {
-        "jsonrpc": "2.0",
-        "id": str(uuid.uuid4()),
-        "method": method,
-        "params": params or {},
-    }
-
-    try:
-        with httpx.Client(timeout=60) as client:
-            resp = client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception as e:
-        logger.error("Error calling %s on %s: %s", method, server["name"], e)
-        return {"error": str(e), "connection": server["name"]}
-
-
-# ---------------------------------------------------------------------------
-# REST connection proxy helpers (UC connections proxy endpoint)
-# ---------------------------------------------------------------------------
-
-def _get_connection_description(w: WorkspaceClient, connection_name: str) -> str:
-    """Fetch the description/comment from a UC connection.
-
-    The description can contain an API spec (swagger-style markdown) that
-    tells the agent what endpoints, methods, and schemas are available.
+    Credentials are sent via HTTP Basic auth (RFC 6749 §2.3.1).  If the
+    ``token_url`` already contains query-string parameters (e.g.
+    ``grant_type=client_credentials&scope=anonymous``), they are preserved
+    and not duplicated in the POST body.
     """
-    try:
-        conn = w.connections.get(connection_name)
-        return conn.comment or ""
-    except Exception as e:
-        logger.warning("Could not fetch description for %s: %s", connection_name, e)
-        return ""
+    token_url = auth_cfg.get("token_url", "")
 
-
-def _call_rest_proxy(
-    w: WorkspaceClient,
-    connection_name: str,
-    method: str,
-    path: str,
-    json_body: dict | str | None = None,
-) -> str:
-    """Call a REST API via the UC connections proxy endpoint."""
-    url = (
-        f"{w.config.host}/api/2.0/unity-catalog/connections/"
-        f"{connection_name}/proxy/{path.lstrip('/')}"
+    client_id = auth_cfg.get("client_id") or os.environ.get(
+        auth_cfg.get("client_id_env", ""), ""
     )
-    headers = w.config.authenticate()
-    headers["Content-Type"] = "application/json"
-    headers["Accept-Encoding"] = "identity"
+    client_secret = auth_cfg.get("client_secret") or os.environ.get(
+        auth_cfg.get("client_secret_env", ""), ""
+    )
+
+    if not all([token_url, client_id, client_secret]):
+        logger.warning("OAuth config incomplete — missing token_url or credentials")
+        return {}
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                token_url,
+                auth=(client_id, client_secret),
+            )
+            resp.raise_for_status()
+            token = resp.json().get("access_token", "")
+            header_name = auth_cfg.get("header_name", "Authorization")
+            prefix = auth_cfg.get("header_prefix", "Bearer ")
+            return {header_name: f"{prefix}{token}"}
+    except Exception as e:
+        logger.error("OAuth token exchange failed: %s", e)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Request executor (shared by all generated tool handlers)
+# ---------------------------------------------------------------------------
+
+async def _execute_request(cfg: dict, kwargs: dict) -> str:
+    """Execute an HTTP request based on tool config and caller-provided args."""
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}
+
+    url = cfg["base_url"] + cfg["path"]
+    for p in cfg.get("parameters", []):
+        if p["in"] == "path" and p["name"] in kwargs:
+            url = url.replace(f"{{{p['name']}}}", str(kwargs[p["name"]]))
+
+    query_params = {}
+    for p in cfg.get("parameters", []):
+        if p["in"] == "query":
+            val = kwargs.get(p["name"], p.get("default"))
+            if val is not None:
+                query_params[p["name"]] = val
 
     body = None
-    if json_body:
-        body = json.loads(json_body) if isinstance(json_body, str) else json_body
+    if cfg.get("body") and cfg["body"].get("fields"):
+        body = {
+            f["name"]: kwargs[f["name"]]
+            for f in cfg["body"]["fields"]
+            if f["name"] in kwargs
+        }
+        if not body:
+            body = None
+
+    headers = _resolve_auth_headers(cfg.get("auth", {}))
+    headers["Accept"] = "application/json"
+
+    for dh in cfg.get("default_headers", []):
+        param_name = dh["name"].replace("-", "_")
+        val = kwargs.get(param_name, dh.get("default"))
+        if val is not None:
+            headers[dh["name"]] = str(val)
+
+    for eh in cfg.get("headers", []):
+        param_name = eh["name"].replace("-", "_")
+        val = kwargs.get(param_name, eh.get("default"))
+        if val is not None:
+            headers[eh["name"]] = str(val)
+
+    if body is not None:
+        content_type = cfg.get("body", {}).get("content_type", "application/json")
+        headers["Content-Type"] = content_type
 
     try:
-        with httpx.Client(timeout=60) as client:
-            resp = client.request(method.upper(), url, headers=headers, json=body)
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.request(
+                cfg["method"],
+                url,
+                params=query_params or None,
+                json=body,
+                headers=headers,
+            )
             resp.raise_for_status()
-            return resp.text
+            try:
+                return json.dumps(resp.json(), indent=2)
+            except Exception:
+                return resp.text
     except httpx.HTTPStatusError as e:
-        return json.dumps({"error": e.response.status_code, "message": e.response.text})
+        return json.dumps({
+            "error": e.response.status_code,
+            "message": e.response.text[:2000],
+        })
     except Exception as e:
-        logger.error("REST proxy error for %s: %s", connection_name, e)
+        logger.error("Request failed for %s: %s", cfg["tool_name"], e)
         return json.dumps({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------
-# MCP Tools
+# Dynamic tool handler factory
 # ---------------------------------------------------------------------------
 
+_TYPE_NAMES = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+    "array": "str",
+    "object": "str",
+}
 
-@mcp.tool()
-def list_servers() -> str:
-    """List all upstream MCP servers bundled in this proxy.
 
-    Shows the server name and type for each server that was selected
-    during deployment.
+def _build_handler(cfg: dict):
+    """Create an async handler with real typed parameters via exec().
+
+    FastMCP introspects function signatures with pydantic, so the handler
+    must have actual named parameters — a **kwargs function with a patched
+    __signature__ is not sufficient.
     """
-    if not SELECTED_SERVERS:
-        return "No upstream servers are configured. Redeploy via the Selector app."
+    required_parts: list[str] = []
+    optional_parts: list[str] = []
+    all_param_names: list[str] = []
 
-    lines = ["# Bundled MCP Servers\n"]
-    for s in SELECTED_SERVERS:
-        stype = s.get("type", "mcp")
-        host = s.get("host", "")
-        if stype == "rest":
-            base = s.get("base_path", "")
-            lines.append(f"- **{s['name']}** (REST) — `{host}{base}`")
+    for p in cfg.get("parameters", []):
+        name = p["name"]
+        type_str = _TYPE_NAMES.get(p.get("type", "string"), "str")
+        all_param_names.append(name)
+
+        if p.get("required", False):
+            required_parts.append(f"{name}: {type_str}")
+        elif "default" in p:
+            required_parts.append(f"{name}: {type_str} = {repr(p['default'])}")
         else:
-            lines.append(f"- **{s['name']}** (MCP) — `{host}`")
-    lines.append(f"\n**{len(SELECTED_SERVERS)} server(s) available.**")
-    lines.append(
-        "\nUse `list_upstream_tools(server=\"<name>\")` to see available "
-        "tools on a server."
-    )
-    return "\n".join(lines)
+            optional_parts.append(f"{name}: Optional[{type_str}] = None")
 
+    if cfg.get("body") and cfg["body"].get("fields"):
+        for f in cfg["body"]["fields"]:
+            name = f["name"]
+            type_str = _TYPE_NAMES.get(f.get("type", "string"), "str")
+            all_param_names.append(name)
 
-@mcp.tool()
-def list_upstream_tools(server: str) -> str:
-    """List all tools available on a specific upstream MCP server.
-
-    Args:
-        server: The server name (from `list_servers`).
-    """
-    if server not in SERVER_INDEX:
-        available = ", ".join(sorted(SERVER_INDEX.keys()))
-        return f"Unknown server: `{server}`.\n\nAvailable: {available}"
-
-    server_entry = SERVER_INDEX[server]
-
-    # REST connections: expose api_request tool with API spec from connection description
-    if server_entry.get("type") == "rest":
-        w = _get_workspace_client()
-        conn_name = server_entry.get("connection_name", server_entry["name"])
-        description = _get_connection_description(w, conn_name)
-
-        lines = [
-            f"# Tools on {server} (REST API proxy)\n",
-            f"- **api_request**: Make HTTP requests to the `{conn_name}` API.\n"
-            f"  Arguments: `method` (GET/POST/PUT/PATCH/DELETE), "
-            f"`path` (API path), `json_body` (optional JSON body string or object)",
-            f'\nExample: `call_upstream_tool(server="{server}", tool="api_request", '
-            f'arguments={{"method": "GET", "path": "/your/endpoint"}})`',
-        ]
-
-        if description:
-            lines.append("\n---\n")
-            lines.append("## API Reference (from connection description)\n")
-            lines.append(description)
-
-        return "\n".join(lines)
-
-    # MCP servers: standard tools/list via JSON-RPC
-    w = _get_workspace_client()
-    result = _call_upstream_mcp(w, server_entry, "tools/list")
-
-    if "error" in result and "connection" in result:
-        return f"Error listing tools on `{server}`: {result['error']}"
-
-    tools = result.get("result", {}).get("tools", [])
-    if not tools:
-        return f"No tools found on `{server}`."
-
-    lines = [f"# Tools on {server}\n"]
-    for t in tools:
-        name = t.get("name", "unknown")
-        desc = t.get("description", "No description")
-        lines.append(f"- **{name}**: {desc}")
-
-    lines.append(f"\n**{len(tools)} tool(s).**")
-    lines.append(
-        f'\nUse `call_upstream_tool(server="{server}", tool="<tool_name>", '
-        f'arguments={{...}})` to call one.'
-    )
-    return "\n".join(lines)
-
-
-@mcp.tool()
-def list_all_tools() -> str:
-    """List tools from ALL bundled upstream MCP servers.
-
-    Queries every configured server and returns a combined listing.
-    """
-    if not SELECTED_SERVERS:
-        return "No upstream servers are configured."
-
-    w = _get_workspace_client()
-    lines = ["# All Upstream Tools\n"]
-    total = 0
-
-    for s in SELECTED_SERVERS:
-        if s.get("type") == "rest":
-            conn = s.get("connection_name", s["name"])
-            description = _get_connection_description(w, conn)
-            lines.append(f"\n## {s['name']} (REST API proxy)\n")
-            lines.append(f"- **api_request**: Make HTTP requests to `{conn}`")
-            if description:
-                first_lines = "\n".join(description.splitlines()[:5])
-                lines.append(f"\n  _{first_lines.strip()}_")
-            total += 1
-            continue
-
-        result = _call_upstream_mcp(w, s, "tools/list")
-        tools = result.get("result", {}).get("tools", [])
-        if tools:
-            lines.append(f"\n## {s['name']} ({len(tools)} tools)\n")
-            for t in tools:
-                lines.append(f"- **{t.get('name', '?')}**: {t.get('description', '')}")
-            total += len(tools)
-        elif "error" in result:
-            lines.append(f"\n## {s['name']} — Error: {result.get('error', 'unknown')}\n")
-
-    lines.append(f"\n**{total} total tool(s) across {len(SELECTED_SERVERS)} server(s).**")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-def call_upstream_tool(
-    server: str,
-    tool: str,
-    arguments: dict | None = None,
-) -> str:
-    """Call a specific tool on an upstream MCP server.
-
-    Use `list_upstream_tools` to discover available tools first.
-
-    Args:
-        server: The server name of the upstream MCP server.
-        tool: The tool name to invoke.
-        arguments: Tool arguments as a JSON object (varies by tool).
-    """
-    if server not in SERVER_INDEX:
-        available = ", ".join(sorted(SERVER_INDEX.keys()))
-        return f"Unknown server: `{server}`.\n\nAvailable: {available}"
-
-    w = _get_workspace_client()
-    server_entry = SERVER_INDEX[server]
-
-    # REST connections: proxy via UC connections endpoint
-    if server_entry.get("type") == "rest":
-        args = arguments or {}
-        conn_name = server_entry.get("connection_name", server_entry["name"])
-        return _call_rest_proxy(
-            w,
-            conn_name,
-            args.get("method", "GET"),
-            args.get("path", "/"),
-            args.get("json_body"),
-        )
-
-    # MCP servers: standard JSON-RPC tools/call
-    call_params = {
-        "name": tool,
-        "arguments": arguments or {},
-    }
-    result = _call_upstream_mcp(w, server_entry, "tools/call", call_params)
-
-    if "error" in result and "connection" in result:
-        return f"Error calling `{tool}` on `{server}`: {result['error']}"
-
-    rpc_result = result.get("result", {})
-
-    content_list = rpc_result.get("content", [])
-    if content_list:
-        parts = []
-        for item in content_list:
-            if isinstance(item, dict) and item.get("type") == "text":
-                parts.append(item.get("text", ""))
-            elif isinstance(item, dict):
-                parts.append(json.dumps(item, indent=2))
+            if f.get("required", False):
+                required_parts.append(f"{name}: {type_str}")
             else:
-                parts.append(str(item))
-        return "\n".join(parts)
+                optional_parts.append(f"{name}: Optional[{type_str}] = None")
 
-    return json.dumps(rpc_result, indent=2)
+    for h in cfg.get("default_headers", []):
+        name = h["name"].replace("-", "_")
+        all_param_names.append(name)
+        if h.get("default"):
+            optional_parts.append(f"{name}: str = {repr(h['default'])}")
+        elif h.get("required", False):
+            required_parts.append(f"{name}: str")
+        else:
+            optional_parts.append(f"{name}: Optional[str] = None")
 
+    for h in cfg.get("headers", []):
+        name = h["name"].replace("-", "_")
+        all_param_names.append(name)
+        if h.get("required", False):
+            required_parts.append(f"{name}: str")
+        else:
+            optional_parts.append(f"{name}: Optional[str] = None")
+
+    params_str = ", ".join(required_parts + optional_parts)
+    kwargs_items = ", ".join(f'"{n}": {n}' for n in all_param_names)
+    func_name = cfg["tool_name"]
+    docstring = cfg.get("description", "").replace("\\", "\\\\").replace('"', '\\"')
+
+    code = (
+        f"async def {func_name}({params_str}) -> str:\n"
+        f'    """{docstring}"""\n'
+        f"    return await _exec(_cfg, {{{kwargs_items}}})\n"
+    )
+
+    namespace = {
+        "_exec": _execute_request,
+        "_cfg": cfg,
+        "Optional": Optional,
+    }
+    exec(code, namespace)  # noqa: S102
+    return namespace[func_name]
+
+
+# ---------------------------------------------------------------------------
+# FastMCP Server + dynamic registration
+# ---------------------------------------------------------------------------
+
+TOOL_CONFIGS = _load_tool_configs()
+
+mcp = FastMCP(
+    "CDK MCP Proxy",
+    instructions=(
+        "You are the CDK MCP Proxy server. Each tool corresponds to a "
+        "specific API endpoint. Call tools directly with the required "
+        "parameters."
+    ),
+)
+
+for _cfg in TOOL_CONFIGS:
+    try:
+        handler = _build_handler(_cfg)
+        mcp.tool(name=_cfg["tool_name"], description=_cfg.get("description", ""))(handler)
+        logger.info("Registered tool: %s", _cfg["tool_name"])
+    except Exception as e:
+        logger.error("Failed to register tool %s: %s", _cfg["tool_name"], e)
+
+registered_count = sum(1 for _c in TOOL_CONFIGS if _c.get("tool_name"))
+logger.info(
+    "CDK MCP Proxy: %d tool config(s) processed",
+    registered_count,
+)
 
 # ---------------------------------------------------------------------------
 # ASGI app for uvicorn — Streamable HTTP on /mcp
