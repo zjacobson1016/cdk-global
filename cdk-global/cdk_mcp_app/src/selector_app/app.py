@@ -24,10 +24,23 @@ CONFIG_FILE = Path(__file__).parent / "api_config.yaml"
 
 
 def get_workspace_client() -> WorkspaceClient:
-    return WorkspaceClient(
-        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
-        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
-    )
+    return WorkspaceClient()
+
+
+def get_current_user() -> dict:
+    """Get the identity of the currently logged-in user via Databricks Apps SSO."""
+    token = st.context.headers.get("x-forwarded-access-token")
+    if not token:
+        return {"display_name": "Local Dev", "email": "unknown"}
+    try:
+        user_client = WorkspaceClient(
+            token=token,
+            host=os.environ.get("DATABRICKS_HOST"),
+        )
+        me = user_client.current_user.me()
+        return {"display_name": me.display_name, "email": me.user_name}
+    except Exception:
+        return {"display_name": "Unknown", "email": "unknown"}
 
 
 def load_api_config() -> list[dict]:
@@ -410,6 +423,10 @@ def main():
         page_icon="🔌",
         layout="wide",
     )
+
+    user = get_current_user()
+    st.sidebar.markdown(f"Logged in as: **{user['display_name']}**")
+    st.sidebar.caption(user["email"])
 
     st.title("CDK MCP Tool Selector")
 

@@ -110,62 +110,137 @@ def get_lakebase_access_error_message(lakebase_instance_name: str) -> str:
         )
 
 
+def _get_store(config: RunnableConfig) -> Optional[BaseStore]:
+    return config.get("configurable", {}).get("store")
+
+
+def _get_user_id_from_config(config: RunnableConfig) -> Optional[str]:
+    return config.get("configurable", {}).get("user_id")
+
+
 def memory_tools():
+    # ------------------------------------------------------------------
+    # Semantic memory tools (user-scoped rules, preferences, patterns)
+    # ------------------------------------------------------------------
     @tool
-    async def get_user_memory(query: str, config: RunnableConfig) -> str:
-        """Search for relevant information about the user from long-term memory."""
-        user_id = config.get("configurable", {}).get("user_id")
+    async def search_semantic_memory(query: str, config: RunnableConfig) -> str:
+        """Search for rules, preferences, and patterns in the user's semantic memory."""
+        user_id = _get_user_id_from_config(config)
         if not user_id:
             return "Memory not available - no user_id provided."
-
-        store: Optional[BaseStore] = config.get("configurable", {}).get("store")
+        store = _get_store(config)
         if not store:
             return "Memory not available - store not configured."
 
-        namespace = ("user_memories", user_id.replace(".", "-"))
+        namespace = ("memory_semantic", user_id.replace(".", "-"))
         results = await store.asearch(namespace, query=query, limit=5)
 
-        if not results:
-            return "No memories found for this user."
+        # Also search org-level semantic memory
+        org_results = await store.asearch(("memory_semantic", "org"), query=query, limit=3)
 
-        memory_items = [f"- [{item.key}]: {json.dumps(item.value)}" for item in results]
-        return f"Found {len(results)} relevant memories:\n" + "\n".join(memory_items)
+        all_items = []
+        for item in results:
+            all_items.append(f"- [user/{item.key}]: {json.dumps(item.value)}")
+        for item in org_results:
+            all_items.append(f"- [org/{item.key}]: {json.dumps(item.value)}")
+
+        if not all_items:
+            return "No semantic memories found."
+
+        return f"Found {len(all_items)} semantic memories:\n" + "\n".join(all_items)
 
     @tool
-    async def save_user_memory(memory_key: str, memory_data_json: str, config: RunnableConfig) -> str:
-        """Save information about the user to long-term memory."""
-        user_id = config.get("configurable", {}).get("user_id")
+    async def save_semantic_memory(memory_key: str, memory_data_json: str, config: RunnableConfig) -> str:
+        """Save a rule, preference, or pattern to the user's semantic memory."""
+        user_id = _get_user_id_from_config(config)
         if not user_id:
             return "Cannot save memory - no user_id provided."
-
-        store: Optional[BaseStore] = config.get("configurable", {}).get("store")
+        store = _get_store(config)
         if not store:
             return "Cannot save memory - store not configured."
 
-        namespace = ("user_memories", user_id.replace(".", "-"))
-
+        namespace = ("memory_semantic", user_id.replace(".", "-"))
         try:
             memory_data = json.loads(memory_data_json)
             if not isinstance(memory_data, dict):
                 return f"Failed: memory_data must be a JSON object, not {type(memory_data).__name__}"
             await store.aput(namespace, memory_key, memory_data)
-            return f"Successfully saved memory '{memory_key}' for user."
+            return f"Successfully saved semantic memory '{memory_key}'."
         except json.JSONDecodeError as e:
             return f"Failed to save memory: Invalid JSON - {e}"
 
     @tool
-    async def delete_user_memory(memory_key: str, config: RunnableConfig) -> str:
-        """Delete a specific memory from the user's long-term memory."""
-        user_id = config.get("configurable", {}).get("user_id")
+    async def delete_semantic_memory(memory_key: str, config: RunnableConfig) -> str:
+        """Delete a specific entry from the user's semantic memory."""
+        user_id = _get_user_id_from_config(config)
         if not user_id:
             return "Cannot delete memory - no user_id provided."
-
-        store: Optional[BaseStore] = config.get("configurable", {}).get("store")
+        store = _get_store(config)
         if not store:
             return "Cannot delete memory - store not configured."
 
-        namespace = ("user_memories", user_id.replace(".", "-"))
+        namespace = ("memory_semantic", user_id.replace(".", "-"))
         await store.adelete(namespace, memory_key)
-        return f"Successfully deleted memory '{memory_key}' for user."
+        return f"Successfully deleted semantic memory '{memory_key}'."
 
-    return [get_user_memory, save_user_memory, delete_user_memory]
+    # ------------------------------------------------------------------
+    # Knowledge tools (org-scoped documents and reference data)
+    # ------------------------------------------------------------------
+    @tool
+    async def search_knowledge(query: str, config: RunnableConfig) -> str:
+        """Search enterprise knowledge base for documents, policies, and reference data."""
+        store = _get_store(config)
+        if not store:
+            return "Knowledge not available - store not configured."
+
+        results = await store.asearch(("knowledge", "org"), query=query, limit=5)
+
+        if not results:
+            return "No knowledge documents found for this query."
+
+        items = []
+        for item in results:
+            title = item.value.get("title", item.key)
+            content = item.value.get("content", "")
+            items.append(f"- **{title}**: {content}")
+
+        return f"Found {len(results)} knowledge documents:\n" + "\n".join(items)
+
+    # ------------------------------------------------------------------
+    # Episodic memory tools (trajectories and feedback)
+    # ------------------------------------------------------------------
+    @tool
+    async def search_episodic_memory(query: str, config: RunnableConfig) -> str:
+        """Search past interaction trajectories and feedback from episodic memory."""
+        user_id = _get_user_id_from_config(config)
+        store = _get_store(config)
+        if not store:
+            return "Episodic memory not available - store not configured."
+
+        all_items = []
+
+        # Org-level episodic
+        org_results = await store.asearch(("memory_episodic", "org"), query=query, limit=3)
+        for item in org_results:
+            all_items.append(f"- [org/{item.key}]: {json.dumps(item.value)}")
+
+        # User-level episodic
+        if user_id:
+            user_results = await store.asearch(
+                ("memory_episodic", user_id.replace(".", "-")), query=query, limit=3
+            )
+            for item in user_results:
+                all_items.append(f"- [user/{item.key}]: {json.dumps(item.value)}")
+
+        if not all_items:
+            return "No episodic memories found."
+
+        return f"Found {len(all_items)} episodic memories:\n" + "\n".join(all_items)
+
+    return [
+        search_semantic_memory,
+        save_semantic_memory,
+        delete_semantic_memory,
+        search_knowledge,
+        search_episodic_memory,
+    ]

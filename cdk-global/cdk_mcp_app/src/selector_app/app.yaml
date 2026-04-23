@@ -11,4 +11,6 @@ command:
 
 env:
   - name: MCP_PROXY_APP_NAME
-    value: "mcp-proxy-dev-zach"
+    valueFrom: mcp-proxy-app
+  - name: MCP_PROXY_SOURCE_PATH
+    value: "/Workspace/Users/zachary.jacobson@cdk.com/.bundle/cdk-mcp-app/dev/files/src/mcp_proxy_app"

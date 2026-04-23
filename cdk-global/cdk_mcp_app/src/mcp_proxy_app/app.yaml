@@ -5,3 +5,9 @@ command:
   - "0.0.0.0"
   - "--port"
   - "8000"
+
+env:
+  - name: FORTELLIS_CLIENT_ID
+    valueFrom: fortellis-client-id
+  - name: FORTELLIS_CLIENT_SECRET
+    valueFrom: fortellis-client-secret

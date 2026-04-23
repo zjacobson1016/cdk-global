@@ -27,6 +27,11 @@ from mlflow.types.responses import (
 )
 from typing_extensions import Annotated
 
+from agent_server.context_builder import (
+    build_context,
+    build_system_prompt,
+    write_episodic_trajectory,
+)
 from agent_server.utils import (
     get_databricks_host_from_env,
     get_lakebase_access_error_message,
@@ -56,7 +61,7 @@ def get_current_time() -> str:
 ############################################
 # Configuration
 ############################################
-LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4-5"
+LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-sonnet-4-5")
 _LAKEBASE_INSTANCE_NAME_RAW = os.getenv("LAKEBASE_INSTANCE_NAME") or None
 EMBEDDING_ENDPOINT = "databricks-gte-large-en"
 EMBEDDING_DIMS = 1024
@@ -82,43 +87,7 @@ class StatefulAgentState(TypedDict, total=False):
     messages: Annotated[Sequence[AnyMessage], add_messages]
     custom_inputs: dict[str, Any]
     custom_outputs: dict[str, Any]
-
-
-SYSTEM_PROMPT = """You are a helpful assistant. Use the available tools to answer questions.
-
-You have TWO types of memory:
-
-## Short-term memory (conversation history)
-You automatically remember everything said in the current conversation thread.
-If the user refers to something said earlier, you already have that context.
-
-## Long-term memory (cross-session facts)
-You have tools to persist information across conversations:
-- Use get_user_memory to search for previously saved information about the user
-- Use save_user_memory to remember important facts, preferences, or details the user shares
-- Use delete_user_memory to forget specific information when asked
-
-Always check for relevant long-term memories at the start of a conversation to provide personalized responses.
-
-### When to save long-term memories
-
-**Always save** when the user explicitly asks you to remember something. Trigger phrases include:
-"remember that…", "store this", "add to memory", "note that…", "from now on…"
-
-**Proactively save** when the user shares information that is likely to remain true for months or years \
-and would meaningfully improve future responses. This includes:
-- Preferences (e.g., language, framework, formatting style)
-- Role, responsibilities, or expertise
-- Ongoing projects or long-term goals
-- Recurring constraints (e.g., accessibility needs, dietary restrictions)
-
-### When NOT to save long-term memories
-
-- Temporary or short-lived facts (e.g., "I'm tired today")
-- Trivial or one-off details (e.g., what they ate for lunch, a single troubleshooting step)
-- Highly sensitive personal information (health conditions, political affiliation, sexual orientation, \
-religion, criminal history) — unless the user explicitly asks you to store it
-- Information that could feel intrusive or overly personal to store"""
+    context: dict[str, Any]
 
 
 def init_mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerMCPClient:
@@ -136,6 +105,7 @@ def init_mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerM
 
 async def init_agent(
     store: BaseStore,
+    system_prompt: str,
     workspace_client: Optional[WorkspaceClient] = None,
     checkpointer: Optional[Any] = None,
 ):
@@ -144,7 +114,7 @@ async def init_agent(
     return create_agent(
         model=ChatDatabricks(endpoint=LLM_ENDPOINT_NAME),
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         store=store,
         checkpointer=checkpointer,
         state_schema=StatefulAgentState,
@@ -181,13 +151,19 @@ async def stream_handler(
     if not user_id:
         logger.warning("No user_id provided - long-term memory features will not be available")
 
+    messages = to_chat_completions_input([i.model_dump() for i in request.input])
+    user_query = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            user_query = msg.get("content", "")
+            break
+
     input_state: dict[str, Any] = {
-        "messages": to_chat_completions_input([i.model_dump() for i in request.input]),
+        "messages": messages,
         "custom_inputs": dict(request.custom_inputs or {}),
     }
 
     try:
-        # Short-term memory: checkpoint-based conversation history per thread_id
         async with AsyncCheckpointSaver(
             instance_name=LAKEBASE_INSTANCE_NAME,
             project=LAKEBASE_AUTOSCALING_PROJECT,
@@ -195,7 +171,6 @@ async def stream_handler(
         ) as checkpointer:
             await checkpointer.setup()
 
-            # Long-term memory: vector-searchable facts per user_id
             async with AsyncDatabricksStore(
                 instance_name=LAKEBASE_INSTANCE_NAME,
                 project=LAKEBASE_AUTOSCALING_PROJECT,
@@ -204,6 +179,17 @@ async def stream_handler(
                 embedding_dims=EMBEDDING_DIMS,
             ) as store:
                 await store.setup()
+
+                # Build context from Lakebase persistent stores
+                ctx = await build_context(store, user_id, user_query)
+                input_state["context"] = ctx
+
+                # Dynamic system prompt from Skills + context
+                system_prompt = build_system_prompt(
+                    instructions=ctx["instructions"],
+                    retrieved_docs=ctx["retrieved_docs"],
+                    memories=ctx["memories"],
+                )
 
                 config: dict[str, Any] = {
                     "configurable": {
@@ -217,6 +203,7 @@ async def stream_handler(
                 agent = await init_agent(
                     workspace_client=sp_workspace_client,
                     store=store,
+                    system_prompt=system_prompt,
                     checkpointer=checkpointer,
                 )
                 async for event in process_agent_astream_events(
@@ -227,6 +214,14 @@ async def stream_handler(
                     )
                 ):
                     yield event
+
+                # Post-interaction: write episodic trajectory for continuous improvement
+                await write_episodic_trajectory(
+                    store=store,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    summary=f"User query: {user_query[:200]}",
+                )
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["lakebase", "pg_hba", "postgres", "database instance"]):

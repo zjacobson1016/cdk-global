@@ -4,3 +4,16 @@ resources:
       name: mcp-proxy-${bundle.target}-zach
       description: "MCP proxy server that bundles selected External API MCP servers"
       source_code_path: ../src/mcp_proxy_app
+      resources:
+        - name: fortellis-client-id
+          description: "Fortellis OAuth client ID"
+          secret:
+            scope: cdk-mcp-credentials
+            key: FORTELLIS_CLIENT_ID
+            permission: READ
+        - name: fortellis-client-secret
+          description: "Fortellis OAuth client secret"
+          secret:
+            scope: cdk-mcp-credentials
+            key: FORTELLIS_CLIENT_SECRET
+            permission: READ

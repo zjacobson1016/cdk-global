@@ -218,8 +218,8 @@ apis:
     auth:
       method: oauth
       token_url: https://identity.fortellis.io/oauth2/aus1p1ixy7YL8cMq02p7/v1/token?grant_type=client_credentials&scope=anonymous
-      client_id: NMVuDsug0ySjqABCxsrTaOB4f9B5LvV0
-      client_secret: z88JGmHmKiHyhAs5
+      client_id_env: FORTELLIS_CLIENT_ID
+      client_secret_env: FORTELLIS_CLIENT_SECRET
       header_name: Authorization
       header_prefix: "Bearer "
     default_headers:
